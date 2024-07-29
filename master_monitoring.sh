@@ -5,6 +5,7 @@
 #
 # Author: Mainul Hossain and Anh Tuan Hoang
 # Date: 10 July 2024
+# Updated: 28th July 2024
 
 # Get the script's name
 master_script_name=${0##*/}
@@ -44,9 +45,11 @@ while getopts ":d:t:l:ch" opt; do
         :) echo "Option -$OPTARG requires an argument." >&2; usage ;;
     esac
 done
+shift $((OPTIND - 1))
 
 # Check if cleanup is requested
 if [ "$CLEANUP" = true ]; then
+    echo "Stopping all diagnostic scripts..."
     ./threadcount/netcore_threadcount_monitoring.sh -c 2>/dev/null
     ./responsetime/resp_monitoring.sh -c 2>/dev/null
     ./outboundconnection/snat_monitoring.sh -c 2>/dev/null
@@ -54,16 +57,60 @@ if [ "$CLEANUP" = true ]; then
     exit 0
 fi
 
-# Ensure diagnostic type is provided
+# Interactive input if no diagnostic type is provided
 if [ -z "$DIAGNOSTIC" ]; then
-    echo "Error: Diagnostic type not specified."
-    exit 1
+    echo "Select diagnostic type:"
+    echo "1. threadcount"
+    echo "2. responsetime"
+    echo "3. outboundconnection"
+    read -p "Enter choice [1-3]: " diag_choice
+
+    case $diag_choice in
+        1) DIAGNOSTIC="threadcount" ;;
+        2) DIAGNOSTIC="responsetime" ;;
+        3) DIAGNOSTIC="outboundconnection" ;;
+        *) echo "Invalid choice." ; exit 1 ;;
+    esac
 fi
 
-# Ensure required threshold argument is provided for all diagnostic types
 if [ -z "$THRESHOLD" ]; then
-    echo "Error: Threshold (-t) is required for $DIAGNOSTIC."
-    exit 1
+    read -p "Enter threshold: " THRESHOLD
+fi
+
+if [ "$DIAGNOSTIC" == "responsetime" ] && [ -z "$URL" ]; then
+    read -p "Enter URL to monitor (default: http://localhost:80): " URL
+    URL=${URL:-http://localhost:80}
+fi
+
+# Handle additional options for responsetime
+if [ "$DIAGNOSTIC" == "responsetime" ]; then
+    if [ -z "$1" ]; then
+        echo "Enable additional options for responsetime (default: none):"
+        echo "1. enable-dump"
+        echo "2. enable-trace"
+        echo "3. enable-dump-trace"
+        echo "4. none"
+        read -p "Enter choice [1-4]: " resp_choice
+
+        case $resp_choice in
+            1) RESP_OPTION="enable-dump" ;;
+            2) RESP_OPTION="enable-trace" ;;
+            3) RESP_OPTION="enable-dump-trace" ;;
+            4) RESP_OPTION="" ;;
+            *) echo "Invalid choice." ; exit 1 ;;
+        esac
+    else
+        while (( "$#" )); do
+            if [ "$1" == "enable-dump" ]; then
+                RESP_OPTION="enable-dump"
+            elif [ "$1" == "enable-trace" ]; then
+                RESP_OPTION="enable-trace"
+            elif [ "$1" == "enable-dump-trace" ]; then
+                RESP_OPTION="enable-dump-trace"
+            fi
+            shift
+        done
+    fi
 fi
 
 # Define URLs for the diagnostic scripts
@@ -108,7 +155,7 @@ function run_diagnostic_script() {
     done
 
     # Run the first script with the constructed arguments
-    ./${script_urls[0]##*/} "${cmd_args[@]}" &
+    nohup ./${script_urls[0]##*/} "${cmd_args[@]}" &
 }
 
 # Initialize command arguments
@@ -126,17 +173,9 @@ case $DIAGNOSTIC in
             cmd_args+=("-l http://localhost:80")
         fi
 
-        # Check for additional arguments (enable-trace, enable-trace-only)
-        while (( "$#" )); do
-            if [ "$1" == "enable-dump" ]; then
-                cmd_args+=("enable-dump")
-            elif [ "$1" == "enable-trace" ]; then
-                cmd_args+=("enable-trace")
-            elif [ "$1" == "enable-dump-trace" ]; then
-                cmd_args+=("enable-dump-trace")    
-            fi
-            shift
-        done
+        if [ -n "$RESP_OPTION" ]; then
+            cmd_args+=("$RESP_OPTION")
+        fi
 
         run_diagnostic_script "responsetime" $RESPONSETIME_SCRIPT_URL
         ;;
@@ -152,4 +191,4 @@ esac
 echo "Diagnostic script execution initiated."
 
 # To stop script
-# ./master.sh -c
+# ./master.sh -c 
