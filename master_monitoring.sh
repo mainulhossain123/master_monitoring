@@ -119,15 +119,15 @@ RESPONSETIME_SCRIPT_URL="https://github.com/bkstar123/http_response_time_monitor
 OUTBOUND_CONNECTION_COUNT_SCRIPT_URL="https://github.com/bkstar123/outbound_connection_monitoring/raw/master/outbound_connection_count.sh"
 SNAT_MONITORING_SCRIPT_URL="https://github.com/bkstar123/outbound_connection_monitoring/raw/master/snat_monitoring.sh"
 
-# Check if wget is installed, if not install it
-if ! command -v wget &> /dev/null; then
-    echo "wget could not be found, installing it now..."
-    apt-get update && apt-get install -y wget &> /dev/null
+# Check if curl is installed, if not install it
+if ! command -v curl &> /dev/null; then
+    echo "curl could not be found, installing it now..."
+    apt-get update && apt-get install -y curl &> /dev/null
     if [ $? -ne 0 ]; then
-        echo "Failed to install wget. Please install it manually and rerun the script."
+        echo "Failed to install curl. Please install it manually and rerun the script."
         exit 1
     fi
-    echo "wget has been successfully installed"
+    echo "curl has been successfully installed"
 fi
 
 # Function to download and execute the diagnostic scripts
@@ -145,7 +145,7 @@ function run_diagnostic_script() {
         local diagnostic_script_name=$(basename $script_url)
         if [ ! -f $diagnostic_script_name ]; then
             echo "Downloading $diagnostic_script_name..."
-            wget $script_url -O $diagnostic_script_name &> /dev/null
+            curl -L -o $diagnostic_script_name $script_url &> /dev/null
             if [ $? -ne 0 ]; then
                 echo "Failed to download the dependent script at $script_url"
                 exit 1
