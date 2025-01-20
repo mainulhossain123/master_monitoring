@@ -1,187 +1,197 @@
 #!/bin/bash
 #
-# This script monitors thread counts for a .NET Core application.
-# If thread counts exceed a predefined threshold, it will generate a memory dump, profiler trace, or both for diagnostics.
+# This script is for monitoring the number of threads of a .NET core application.
+# If the thread count exceeds a predefined threshold, then the script will automatically generate a memory dump for investigation.
 #
-# Author: Updated Version
-# Date: January 2025
-
+# author: Tuan Hoang
+# 28 May 2024
 script_name=${0##*/}
-function usage()
-{
-    echo "### Syntax: $script_name -t <threshold> -f <interval> [enable-dump | enable-trace | enable-dump-trace]"
-    echo "-t <threshold> Threshold of thread count to trigger dump/trace. Default: 200"
-    echo "-f <interval> Polling interval in seconds. Default: 10"
-    echo ""
-    echo "Additional options (required):"
-    echo "enable-dump        : Enable memory dump collection only"
-    echo "enable-trace       : Enable profiler trace collection only"
-    echo "enable-dump-trace  : Enable both memory dump and trace collection"
+
+function usage() {
+    echo "###Syntax: $script_name -t <threshold>"
+    echo "- Without specifying -t <threshold>, the default will be 100 threads."
+    echo "###Threshold: when the number of threads exceeds the threshold value in the working instance, the script will automatically take a memory dump for that instance."
 }
 
-function die()
-{
-    echo "$1" && exit $2
-}
-
-function teardown()
-{
-    echo "Terminating all relevant processes..."
-    kill -SIGTERM $(ps -ef | grep "$script_name" | grep -v grep | awk '{print $2}')
-    echo "Cleanup complete."
-    exit 0
-}
-
-function getsasurl()
-{
-    local pid=$1
-    sas_url=$(cat "/proc/$pid/environ" | tr '\0' '\n' | grep -w DIAGNOSTICS_AZUREBLOBCONTAINERSASURL)
-    sas_url=${sas_url#*=}
-    echo "$sas_url"
+function die() {
+    echo "$1" >&2
+    exit $2
 }
 
 function getcomputername()
 {
-    local pid=$1
-    instance=$(cat "/proc/$pid/environ" | tr '\0' '\n' | grep -w COMPUTERNAME)
+    # $1-pid
+    instance=$(cat "/proc/$1/environ" | tr '\0' '\n' | grep -w COMPUTERNAME)
     instance=${instance#*=}
     echo "$instance"
 }
 
+function getsasurl()
+{
+    # $1-pid
+    sas_url=$(cat "/proc/$1/environ" | tr '\0' '\n' | grep -w DIAGNOSTICS_AZUREBLOBCONTAINERSASURL)
+    sas_url=${sas_url#*=}
+    echo "$sas_url"
+}
+
 function collectdump()
 {
-    local output_file=$1
-    local dump_lock_file=$2
-    local instance=$3
-    local pid=$4
-
-    if [[ ! -e "$dump_lock_file" ]]; then
-        echo "$(date '+%Y-%m-%d %H:%M:%S'): Collecting memory dump..." >> "$output_file"
-        touch "$dump_lock_file"
-        local dump_file="dump_${instance}_$(date '+%Y%m%d_%H%M%S').dmp"
-        local sas_url=$(getsasurl "$pid")
-        /tools/dotnet-dump collect -p "$pid" -o "$dump_file" > /dev/null
-        /tools/azcopy copy "$dump_file" "$sas_url" > /dev/null
-        echo "$(date '+%Y-%m-%d %H:%M:%S'): Memory dump uploaded to Azure Blob Storage." >> "$output_file"
-    fi
+    # $1-output_file, $2-dump_lock_file, $3-instance, $4-pid
+    dump_file="dump_${3}_$(date '+%Y%m%d_%H%M%S').dmp"
+    echo "The number of thread exceeds the threshold, collecting memory dump..." >> "$1"
+    echo "Acquiring lock..." >> "$1" && touch "$2" && echo "Memory dump is collected by $3" >> "$2"
+    /tools/dotnet-dump collect -p "$4" -o "$dump_file" > /dev/null && \
+       echo "Memory dump has been collected. Uploading it to Azure Blob Container 'insights-logs-appserviceconsolelogs'" >> "$1" && \
+       /tools/azcopy copy "$dump_file" "$sas_url" > /dev/null && \
+       echo "Memory dump has been uploaded to Azure Blob Container 'insights-logs-appserviceconsolelogs'" >> "$1" &
 }
 
 function collecttrace()
 {
-    local output_file=$1
-    local trace_lock_file=$2
-    local instance=$3
-    local pid=$4
-
-    if [[ ! -e "$trace_lock_file" ]]; then
-        echo "$(date '+%Y-%m-%d %H:%M:%S'): Collecting profiler trace..." >> "$output_file"
-        touch "$trace_lock_file"
-        local trace_file="trace_${instance}_$(date '+%Y%m%d_%H%M%S').nettrace"
-        local sas_url=$(getsasurl "$pid")
-        /tools/dotnet-trace collect -p "$pid" -o "$trace_file" --duration 00:01:00 > /dev/null
-        /tools/azcopy copy "$trace_file" "$sas_url" > /dev/null
-        echo "$(date '+%Y-%m-%d %H:%M:%S'): Profiler trace uploaded to Azure Blob Storage." >> "$output_file"
-    fi
+    # $1-output_file, $2-trace_lock_file, $3-instance, $4-pid
+    trace_file="trace_${3}_$(date '+%Y%m%d_%H%M%S').txt"
+    echo "Collecting trace data..." >> "$1"
+    echo "Acquiring trace lock..." >> "$1" && touch "$2" && echo "Trace collected by $3" >> "$2"
+    /tools/dotnet-trace collect --process-id "$4" --output "$trace_file" > /dev/null && \
+       echo "Trace data has been collected. Uploading it to Azure Blob Container 'insights-logs-appserviceconsolelogs'" >> "$1" && \
+       /tools/azcopy copy "$trace_file" "$sas_url" > /dev/null && \
+       echo "Trace data has been uploaded to Azure Blob Container 'insights-logs-appserviceconsolelogs'" >> "$1" &
 }
 
-# Default options
-threshold=200
-interval=10
+# Initialized values for script's arguments
 enable_dump=false
 enable_trace=false
-diagnostic_option=""
 
-# Parse command line options
-while getopts ":t:f:hc" opt; do
-    case $opt in
-        t)
-            threshold=$OPTARG
+if [[ "$#" -gt 0 ]]; then
+    case $1 in
+        enable-dump)
+            enable_dump=true
             ;;
-        f)
-            interval=$OPTARG
+        enable-trace)
+            enable_trace=true
             ;;
-        h)
-            usage
-            exit 0
-            ;;
-        c)
-            teardown
+        enable-dump-trace)
+            enable_dump=true
+            enable_trace=true
             ;;
         *)
-            die "Invalid option: -$OPTARG" 1
+            die "Unknown argument passed: $1" 1
             ;;
     esac
+fi
+
+while getopts ":t:hc" opt; do
+    case $opt in
+        t)
+           threshold=$OPTARG
+           ;;
+        h)
+           usage
+           exit 0
+           ;;
+        c)
+           clean_flag=1
+           ;;
+        *)
+           die "Invalid option: -$OPTARG" 1
+           ;;
+    esac
 done
-shift $((OPTIND - 1))
+shift $(( OPTIND - 1 ))
 
-# Check for mandatory diagnostic option
-if [[ "$#" -eq 0 ]]; then
-    echo "Error: Diagnostic option (enable-dump, enable-trace, or enable-dump-trace) is required"
-    usage
-    exit 1
+# Cleaning all processes generated by the script
+if [[ "$clean_flag" -eq 1 ]]; then
+    echo "Shutting down dotnet-counters collect process..."
+    kill -SIGTERM $(ps -ef | grep "/tools/dotnet-counters" | grep -v grep | tr -s " " | cut -d" " -f2 | xargs)
+    echo "Shutting down $script_name process..."
+    kill -SIGTERM $(ps -ef | grep "$script_name" | grep -v grep | tr -s " " | cut -d" " -f2 | xargs)
+    echo "Finishing up..."
+    echo "Completed"
+    exit 0
 fi
 
-# Parse diagnostic option
-case "$1" in
-    "enable-dump")
-        enable_dump=true
-        diagnostic_option="dump"
-        ;;
-    "enable-trace")
-        enable_trace=true
-        diagnostic_option="trace"
-        ;;
-    "enable-dump-trace")
-        enable_dump=true
-        enable_trace=true
-        diagnostic_option="dump-trace"
-        ;;
-    *)
-        die "Invalid diagnostic option: $1. Must be enable-dump, enable-trace, or enable-dump-trace" 1
-        ;;
-esac
-
-echo "Starting thread count monitoring with $diagnostic_option collection enabled..."
-
-# Find .NET process
-pid=$(/tools/dotnet-dump ps | grep /usr/share/dotnet/dotnet | grep -v grep | awk '{print $1}')
-if [[ -z "$pid" ]]; then
-    die "No .NET process found." 1
+# Define default threshold value for the number of threads
+if [[ -z "$threshold" ]]; then
+    echo "###Info: If not specify the option -t <threshold>, the script will set the default threshold of thread counts to 100"
+    threshold=100
 fi
 
-# Get instance name
+# Find the PID of the .NET application
+pid=$(/tools/dotnet-dump ps | grep /usr/share/dotnet/dotnet | grep -v grep | tr -s " " | cut -d" " -f2)
+if [ -z "$pid" ]; then
+  die "There is no .NET process running" 1
+fi
+
+# Get the computer name from /proc/PID/environ, where PID is .net core process's pid
 instance=$(getcomputername "$pid")
 if [[ -z "$instance" ]]; then
-    die "Cannot find COMPUTERNAME environment variable." 1
+    die "Cannot find the environment variable of COMPUTERNAME" >&2 1
 fi
 
-# Setup output directory and files
+# Get sas url
+sas_url=$(getsasurl "$pid")
+
+# Output dir is named after instance name
 output_dir="threadcount-logs-$instance"
+
+# Create output directory if it doesn't exist
 mkdir -p "$output_dir"
-output_file="$output_dir/threadcount_log_$(date '+%Y%m%d_%H').log"
+
+# name of the file storing output of dotnet-counters collect
+runtime_counter_log_file="dotnet-runtime-metrics-$instance.csv"
+
+# name of the lock file for generating memdump
 dump_lock_file="dump_taken.lock"
 trace_lock_file="trace_taken.lock"
 
-# Log startup information
-echo "$(date '+%Y-%m-%d %H:%M:%S'): Starting monitoring with following configuration:" >> "$output_file"
-echo "Threshold: $threshold" >> "$output_file"
-echo "Interval: $interval seconds" >> "$output_file"
-echo "Diagnostic Option: $diagnostic_option" >> "$output_file"
+# Collect the .NET process' runtime metrics by starting the dotnet-counters collect command in background
+/tools/dotnet-counters collect --process-id "$pid" --counters System.Runtime --output "$runtime_counter_log_file" > /dev/null &
 
-# Remove any existing lock files at startup
-rm -f "$dump_lock_file" "$trace_lock_file"
-
-while true; do
-    thread_count=$(grep -c ^processor /proc/cpuinfo)
-    echo "$(date '+%Y-%m-%d %H:%M:%S'): Thread count: $thread_count" >> "$output_file"
-
-    if [[ "$thread_count" -ge "$threshold" ]]; then
-        if [[ "$enable_dump" == true ]]; then
-            collectdump "$output_file" "$dump_lock_file" "$instance" "$pid" &
-        fi
-        if [[ "$enable_trace" == true ]]; then
-            collecttrace "$output_file" "$trace_lock_file" "$instance" "$pid" &
-        fi
-    fi
-    sleep "$interval"
+# Wait until the dotnet-counters collect start writing its collected data to the output file
+while [[ ! -e "$runtime_counter_log_file" ]]; do
+   sleep 1
 done
+
+# Function to truncate collected metric data file
+# syntax: trunc <filename>
+trunc() {
+    MAX_SIZE=$(( 1*1024*1024 )) # 1 MB
+    while [[ -f "$1" ]]; do
+        file_size=$(stat -c%s "$1")
+        if [[ "$file_size" -ge "$MAX_SIZE" ]]; then
+            #truncate the file
+            truncate -s 0 "$1"
+        fi
+    done
+}
+
+# Read the log
+if [[ -e "$runtime_counter_log_file" ]]; then
+    # Start a thread to monitor the size of $runtime_counter_log_file & truncate it
+    trunc "$runtime_counter_log_file" &
+    # Reading metric data in $runtime_counter_log_file to extract threadcount information
+    tail -f "$runtime_counter_log_file" | while read -r line; do
+        # Check if it's a new hour
+        current_hour=$(date +"%Y-%m-%d_%H")
+        if [ "$current_hour" != "$previous_hour" ]; then
+            # Rotate the file
+            output_file="$output_dir/threadcount_${current_hour}.log"
+            previous_hour="$current_hour"
+        fi
+        if [[ $line == *"ThreadPool Thread Count"* ]]; then
+            thread_count=$(echo "$line" | awk -F ',' '{print $NF}')
+            timestamp=$(echo "$line" | awk -F ',' '{print $1}')
+            echo "$timestamp: Thread Pool Thread Count: $thread_count" >> "$output_file"
+            # Compare with the threshold value
+            if [[ "$thread_count" -ge "$threshold" ]]; then
+                if [[ "$enable_dump" == true ]]; then
+                    collectdump "$output_file" "$dump_lock_file" "$instance" "$pid" &
+                fi
+
+                if [[ "$enable_trace" == true ]]; then
+                    collecttrace "$output_file" "$trace_lock_file" "$instance" "$pid" &
+                fi  
+            fi
+        fi
+    done
+fi
