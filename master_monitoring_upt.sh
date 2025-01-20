@@ -25,11 +25,10 @@ function usage() {
     echo "  -l <URL>      :  Specify URL to monitor (default: http://localhost:80 for responsetime only)"
     echo "  -c            :  Shutting down the script and all relevant processes"
     echo "  -h            :  Display this help message"
-    echo " For 'responsetime' diagnostic, the script will accept one of following arguments as optional:"
+    echo "The script requires one of following arguments:"
     echo "  + enable-dump        :  Enable memory dump collection"
     echo "  + enable-trace       :  Enable profiler trace collection"
     echo "  + enable-dump-trace  :  Enable both memdump and trace collection"
-    echo " If no arguments passed in, then no memdump, no trace will be collected. The script will just monitor the response time"
     exit 0
 }
 
@@ -82,34 +81,19 @@ if [ "$DIAGNOSTIC" == "responsetime" ] && [ -z "$URL" ]; then
     URL=${URL:-http://localhost:80}
 fi
 
-# Handle additional options for responsetime
-if [ -z "$1" ]; then
-    echo "Enable additional options for responsetime (default: none):"
-    echo "1. enable-dump"
-    echo "2. enable-trace"
-    echo "3. enable-dump-trace"
-    echo "4. none"
-    read -p "Enter choice [1-4]: " resp_choice
+# Handle diagnostics options (mandatory)
+echo "Select diagnostic option:"
+echo "1. enable-dump"
+echo "2. enable-trace"
+echo "3. enable-dump-trace"
+read -p "Enter choice [1-3]: " diag_option
 
-    case $resp_choice in
-        1) RESP_OPTION="enable-dump" ;;
-        2) RESP_OPTION="enable-trace" ;;
-        3) RESP_OPTION="enable-dump-trace" ;;
-        4) RESP_OPTION="" ;;
-        *) echo "Invalid choice." ; exit 1 ;;
-    esac
-else
-    while (( "$#" )); do
-        if [ "$1" == "enable-dump" ]; then
-            RESP_OPTION="enable-dump"
-        elif [ "$1" == "enable-trace" ]; then
-            RESP_OPTION="enable-trace"
-        elif [ "$1" == "enable-dump-trace" ]; then
-            RESP_OPTION="enable-dump-trace"
-        fi
-        shift
-    done
-fi
+case $diag_option in
+    1) DIAG_OPTION="enable-dump" ;;
+    2) DIAG_OPTION="enable-trace" ;;
+    3) DIAG_OPTION="enable-dump-trace" ;;
+    *) echo "Invalid choice." ; exit 1 ;;
+esac
 
 # Define URLs for the diagnostic scripts
 THREADCOUNT_SCRIPT_URL="https://github.com/bkstar123/netcore_counters_monitoring/raw/master/netcore_threadcount_monitoring.sh"
@@ -162,6 +146,7 @@ cmd_args=("-t $THRESHOLD")
 # Build command arguments based on diagnostic type
 case $DIAGNOSTIC in
     threadcount)
+        cmd_args+=("$DIAG_OPTION")
         run_diagnostic_script "threadcount" $THREADCOUNT_SCRIPT_URL
         ;;
     responsetime)
@@ -170,14 +155,11 @@ case $DIAGNOSTIC in
         else
             cmd_args+=("-l http://localhost:80")
         fi
-
-        if [ -n "$RESP_OPTION" ]; then
-            cmd_args+=("$RESP_OPTION")
-        fi
-
+        cmd_args+=("$DIAG_OPTION")
         run_diagnostic_script "responsetime" $RESPONSETIME_SCRIPT_URL
         ;;
     outboundconnection)
+        cmd_args+=("$DIAG_OPTION")
         run_diagnostic_script "outboundconnection" $SNAT_MONITORING_SCRIPT_URL $OUTBOUND_CONNECTION_COUNT_SCRIPT_URL
         ;;
     *)
@@ -189,4 +171,4 @@ esac
 echo "Diagnostic script execution initiated."
 
 # To stop script
-# ./master.sh -c 
+# ./master.sh -c
