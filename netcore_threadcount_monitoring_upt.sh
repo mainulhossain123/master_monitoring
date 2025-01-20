@@ -122,16 +122,16 @@ if [[ "$#" -eq 0 ]]; then
 fi
 
 # Parse diagnostic option
-case $1 in
-    enable-dump)
+case "$1" in
+    "enable-dump")
         enable_dump=true
         diagnostic_option="dump"
         ;;
-    enable-trace)
+    "enable-trace")
         enable_trace=true
         diagnostic_option="trace"
         ;;
-    enable-dump-trace)
+    "enable-dump-trace")
         enable_dump=true
         enable_trace=true
         diagnostic_option="dump-trace"
@@ -167,6 +167,9 @@ echo "$(date '+%Y-%m-%d %H:%M:%S'): Starting monitoring with following configura
 echo "Threshold: $threshold" >> "$output_file"
 echo "Interval: $interval seconds" >> "$output_file"
 echo "Diagnostic Option: $diagnostic_option" >> "$output_file"
+
+# Remove any existing lock files at startup
+rm -f "$dump_lock_file" "$trace_lock_file"
 
 while true; do
     thread_count=$(grep -c ^processor /proc/cpuinfo)
