@@ -84,32 +84,32 @@ fi
 
 # Handle additional options for responsetime
 if [ -z "$1" ]; then
-        echo "Enable additional options for responsetime (default: none):"
-        echo "1. enable-dump"
-        echo "2. enable-trace"
-        echo "3. enable-dump-trace"
-        echo "4. none"
-        read -p "Enter choice [1-4]: " resp_choice
+    echo "Enable additional options for responsetime (default: none):"
+    echo "1. enable-dump"
+    echo "2. enable-trace"
+    echo "3. enable-dump-trace"
+    echo "4. none"
+    read -p "Enter choice [1-4]: " resp_choice
 
-        case $resp_choice in
-            1) RESP_OPTION="enable-dump" ;;
-            2) RESP_OPTION="enable-trace" ;;
-            3) RESP_OPTION="enable-dump-trace" ;;
-            4) RESP_OPTION="" ;;
-            *) echo "Invalid choice." ; exit 1 ;;
-        esac
+    case $resp_choice in
+        1) RESP_OPTION="enable-dump" ;;
+        2) RESP_OPTION="enable-trace" ;;
+        3) RESP_OPTION="enable-dump-trace" ;;
+        4) RESP_OPTION="" ;;
+        *) echo "Invalid choice." ; exit 1 ;;
+    esac
 else
-        while (( "$#" )); do
-            if [ "$1" == "enable-dump" ]; then
-                RESP_OPTION="enable-dump"
-            elif [ "$1" == "enable-trace" ]; then
-                RESP_OPTION="enable-trace"
-            elif [ "$1" == "enable-dump-trace" ]; then
-                RESP_OPTION="enable-dump-trace"
-            fi
-            shift
-        done
-    fi
+    while (( "$#" )); do
+        if [ "$1" == "enable-dump" ]; then
+            RESP_OPTION="enable-dump"
+        elif [ "$1" == "enable-trace" ]; then
+            RESP_OPTION="enable-trace"
+        elif [ "$1" == "enable-dump-trace" ]; then
+            RESP_OPTION="enable-dump-trace"
+        fi
+        shift
+    done
+fi
 
 # Define URLs for the diagnostic scripts
 THREADCOUNT_SCRIPT_URL="https://github.com/bkstar123/netcore_counters_monitoring/raw/master/netcore_threadcount_monitoring.sh"
