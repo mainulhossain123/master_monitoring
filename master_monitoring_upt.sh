@@ -110,7 +110,6 @@ else
             shift
         done
     fi
-fi
 
 # Define URLs for the diagnostic scripts
 THREADCOUNT_SCRIPT_URL="https://github.com/bkstar123/netcore_counters_monitoring/raw/master/netcore_threadcount_monitoring.sh"
