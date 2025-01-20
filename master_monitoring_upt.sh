@@ -83,8 +83,7 @@ if [ "$DIAGNOSTIC" == "responsetime" ] && [ -z "$URL" ]; then
 fi
 
 # Handle additional options for responsetime
-if [ "$DIAGNOSTIC" == "responsetime" || "threadcount" || "outboundconnection"]; then
-    if [ -z "$1" ]; then
+if [ -z "$1" ]; then
         echo "Enable additional options for responsetime (default: none):"
         echo "1. enable-dump"
         echo "2. enable-trace"
@@ -99,7 +98,7 @@ if [ "$DIAGNOSTIC" == "responsetime" || "threadcount" || "outboundconnection"]; 
             4) RESP_OPTION="" ;;
             *) echo "Invalid choice." ; exit 1 ;;
         esac
-    else
+else
         while (( "$#" )); do
             if [ "$1" == "enable-dump" ]; then
                 RESP_OPTION="enable-dump"
@@ -114,10 +113,10 @@ if [ "$DIAGNOSTIC" == "responsetime" || "threadcount" || "outboundconnection"]; 
 fi
 
 # Define URLs for the diagnostic scripts
-THREADCOUNT_SCRIPT_URL="https://raw.githubusercontent.com/mainulhossain123/master_monitoring/refs/heads/testing/netcore_threadcount_monitoring_upt.sh"
-RESPONSETIME_SCRIPT_URL="https://raw.githubusercontent.com/mainulhossain123/master_monitoring/refs/heads/testing/resp_monitoring_upt.sh"
-OUTBOUND_CONNECTION_COUNT_SCRIPT_URL="https://raw.githubusercontent.com/mainulhossain123/master_monitoring/refs/heads/testing/outbound_connection_count_upt.sh"
-SNAT_MONITORING_SCRIPT_URL="https://raw.githubusercontent.com/mainulhossain123/master_monitoring/refs/heads/testing/snat_monitoring_upt.sh"
+THREADCOUNT_SCRIPT_URL="https://github.com/bkstar123/netcore_counters_monitoring/raw/master/netcore_threadcount_monitoring.sh"
+RESPONSETIME_SCRIPT_URL="https://github.com/bkstar123/http_response_time_monitoring/raw/master/resp_monitoring.sh"
+OUTBOUND_CONNECTION_COUNT_SCRIPT_URL="https://github.com/bkstar123/outbound_connection_monitoring/raw/master/outbound_connection_count.sh"
+SNAT_MONITORING_SCRIPT_URL="https://github.com/bkstar123/outbound_connection_monitoring/raw/master/snat_monitoring.sh"
 
 # Check if curl is installed, if not install it
 if ! command -v curl &> /dev/null; then
