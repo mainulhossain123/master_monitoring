@@ -9,9 +9,14 @@
 script_name=${0##*/}
 function usage()
 {
-    echo "### Syntax: $script_name -t <threshold> -f <interval>"
+    echo "### Syntax: $script_name -t <threshold> -f <interval> [enable-dump | enable-trace | enable-dump-trace]"
     echo "-t <threshold> Threshold of outbound connections to trigger dump/trace. Default: 100"
     echo "-f <interval> Polling interval in seconds. Default: 10"
+    echo ""
+    echo "Additional options (required):"
+    echo "enable-dump        : Enable memory dump collection only"
+    echo "enable-trace       : Enable profiler trace collection only"
+    echo "enable-dump-trace  : Enable both memory dump and trace collection"
 }
 
 function die()
@@ -84,7 +89,9 @@ threshold=100
 interval=10
 enable_dump=false
 enable_trace=false
+diagnostic_option=""
 
+# Parse command line options
 while getopts ":t:f:hc" opt; do
     case $opt in
         t)
@@ -107,39 +114,59 @@ while getopts ":t:f:hc" opt; do
 done
 shift $((OPTIND - 1))
 
-if [[ "$#" -gt 0 ]]; then
-    case $1 in
-        enable-dump)
-            enable_dump=true
-            ;;
-        enable-trace)
-            enable_trace=true
-            ;;
-        enable-dump-trace)
-            enable_dump=true
-            enable_trace=true
-            ;;
-        *)
-            die "Unknown argument passed: $1" 1
-            ;;
-    esac
+# Check for mandatory diagnostic option
+if [[ "$#" -eq 0 ]]; then
+    echo "Error: Diagnostic option (enable-dump, enable-trace, or enable-dump-trace) is required"
+    usage
+    exit 1
 fi
 
+# Parse diagnostic option
+case $1 in
+    enable-dump)
+        enable_dump=true
+        diagnostic_option="dump"
+        ;;
+    enable-trace)
+        enable_trace=true
+        diagnostic_option="trace"
+        ;;
+    enable-dump-trace)
+        enable_dump=true
+        enable_trace=true
+        diagnostic_option="dump-trace"
+        ;;
+    *)
+        die "Invalid diagnostic option: $1. Must be enable-dump, enable-trace, or enable-dump-trace" 1
+        ;;
+esac
+
+echo "Starting outbound connection monitoring with $diagnostic_option collection enabled..."
+
+# Find .NET process
 pid=$(/tools/dotnet-dump ps | grep /usr/share/dotnet/dotnet | grep -v grep | awk '{print $1}')
 if [[ -z "$pid" ]]; then
     die "No .NET process found." 1
 fi
 
+# Get instance name
 instance=$(getcomputername "$pid")
 if [[ -z "$instance" ]]; then
     die "Cannot find COMPUTERNAME environment variable." 1
 fi
 
+# Setup output directory and files
 output_dir="outbound-logs-$instance"
 mkdir -p "$output_dir"
 output_file="$output_dir/outbound_log_$(date '+%Y%m%d_%H').log"
 dump_lock_file="dump_taken.lock"
 trace_lock_file="trace_taken.lock"
+
+# Log startup information
+echo "$(date '+%Y-%m-%d %H:%M:%S'): Starting monitoring with following configuration:" >> "$output_file"
+echo "Threshold: $threshold" >> "$output_file"
+echo "Interval: $interval seconds" >> "$output_file"
+echo "Diagnostic Option: $diagnostic_option" >> "$output_file"
 
 while true; do
     connection_count=$(netstat -an | grep ESTABLISHED | wc -l)
