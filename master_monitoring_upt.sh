@@ -137,29 +137,21 @@ function run_diagnostic_script() {
     done
 
     # Run the first script with the constructed arguments
-    nohup ./${script_urls[0]##*/} "${cmd_args[@]}" &
+    echo "Executing: ./${script_urls[0]##*/} -t $THRESHOLD $DIAG_OPTION"
+    nohup ./${script_urls[0]##*/} -t "$THRESHOLD" "$DIAG_OPTION" &
 }
-
-# Initialize command arguments
-cmd_args=("-t $THRESHOLD")
 
 # Build command arguments based on diagnostic type
 case $DIAGNOSTIC in
     threadcount)
-        cmd_args+=("$DIAG_OPTION")
         run_diagnostic_script "threadcount" $THREADCOUNT_SCRIPT_URL
         ;;
     responsetime)
-        if [ -n "$URL" ]; then
-            cmd_args+=("-l $URL")
-        else
-            cmd_args+=("-l http://localhost:80")
-        fi
-        cmd_args+=("$DIAG_OPTION")
+        URL=${URL:-http://localhost:80}
+        echo "Executing: ./resp_monitoring.sh -t $THRESHOLD -l $URL $DIAG_OPTION"
         run_diagnostic_script "responsetime" $RESPONSETIME_SCRIPT_URL
         ;;
     outboundconnection)
-        cmd_args+=("$DIAG_OPTION")
         run_diagnostic_script "outboundconnection" $SNAT_MONITORING_SCRIPT_URL $OUTBOUND_CONNECTION_COUNT_SCRIPT_URL
         ;;
     *)
