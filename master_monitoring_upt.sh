@@ -136,9 +136,22 @@ function run_diagnostic_script() {
         fi
     done
 
+    # Set environment variables for dump and trace options
+    export ENABLE_DUMP=false
+    export ENABLE_TRACE=false
+
+    if [[ "$DIAG_OPTION" == "enable-dump" ]]; then
+        export ENABLE_DUMP=true
+    elif [[ "$DIAG_OPTION" == "enable-trace" ]]; then
+        export ENABLE_TRACE=true
+    elif [[ "$DIAG_OPTION" == "enable-dump-trace" ]]; then
+        export ENABLE_DUMP=true
+        export ENABLE_TRACE=true
+    fi
+
     # Run the first script with the constructed arguments
     echo "Executing: ./${script_urls[0]##*/} -t $THRESHOLD $DIAG_OPTION"
-    nohup ./${script_urls[0]##*/} -t "$THRESHOLD" "$DIAG_OPTION" &
+    nohup ./${script_urls[0]##*/} -t "$THRESHOLD" & 
 }
 
 # Build command arguments based on diagnostic type
