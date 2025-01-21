@@ -1,21 +1,40 @@
 #!/bin/bash
 #
 # This script is for monitoring the number of threads of a .NET core application.
-# If the thread count exceeds a predefined threshold, then the script will automatically generate a memory dump for investigation.
+# If the thread count exceeds a predefined threshold, then the script will automatically generate a memory dump and/or profiler trace for investigation.
 #
 # author: Tuan Hoang
-# 28 May 2024
+# Updated: Mainul Hossain
+# 20 Jan 2025
 script_name=${0##*/}
 
-function usage() {
-    echo "###Syntax: $script_name -t <threshold>"
+function usage()
+{
+    echo "###Syntax: $script_name -t <threshold> [enable-dump|enable-trace|enable-dump-trace]"
     echo "- Without specifying -t <threshold>, the default will be 100 threads."
-    echo "###Threshold: when the number of threads exceeds the threshold value in the working instance, the script will automatically take a memory dump for that instance."
+    echo "###Threshold: when the number of threads exceeds the threshold value in the working instance, the script will automatically take a memory dump and/or trace for that instance."
 }
 
-function die() {
-    echo "$1" >&2
-    exit $2
+function die()
+{
+    echo "$1" && exit $2
+}
+
+function teardown()
+{
+    echo "Shutting down dotnet-counters collect process..."
+    kill -SIGTERM $(ps -ef | grep "/tools/dotnet-counters" | grep -v grep | tr -s " " | cut -d" " -f2 | xargs)
+    echo "Shutting down 'dotnet-trace collect' process..."
+    kill -SIGTERM $(ps -ef | grep "/tools/dotnet-trace" | grep -v grep | tr -s " " | cut -d" " -f2 | xargs)
+    echo "Shutting down 'dotnet-dump collect' process..."
+    kill -SIGTERM $(ps -ef | grep "/tools/dotnet-dump" | grep -v grep | tr -s " " | cut -d" " -f2 | xargs)
+    echo "Shutting down 'azcopy copy' process..."
+    kill -SIGTERM $(ps -ef | grep "/tools/azcopy" | grep -v grep | tr -s " " | cut -d" " -f2 | xargs)
+    echo "Shutting down $script_name process..."
+    kill -SIGTERM $(ps -ef | grep "$script_name" | grep -v grep | tr -s " " | cut -d" " -f2 | xargs)
+    echo "Finishing up..."
+    echo "Completed"
+    exit 0
 }
 
 function getcomputername()
@@ -36,49 +55,33 @@ function getsasurl()
 
 function collectdump()
 {
-    # $1-output_file, $2-dump_lock_file, $3-instance, $4-pid
-    dump_file="dump_${3}_$(date '+%Y%m%d_%H%M%S').dmp"
-    echo "The number of thread exceeds the threshold, collecting memory dump..." >> "$1"
-    echo "Acquiring lock..." >> "$1" && touch "$2" && echo "Memory dump is collected by $3" >> "$2"
-    /tools/dotnet-dump collect -p "$4" -o "$dump_file" > /dev/null && \
-       echo "Memory dump has been collected. Uploading it to Azure Blob Container 'insights-logs-appserviceconsolelogs'" >> "$1" && \
-       /tools/azcopy copy "$dump_file" "$sas_url" > /dev/null && \
-       echo "Memory dump has been uploaded to Azure Blob Container 'insights-logs-appserviceconsolelogs'" >> "$1" &
+    # $1-$output_file, $2-$dump_lock_file, $3-$instance, $4-$pid
+    if [[ ! -e "$2" ]]; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): Acquiring lock for dumping..." >> "$1" && touch "$2" && echo "Memory dump is collected by $3" >> "$2"
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): Collecting memory dump..." >> "$1"
+        local dump_file="dump_$3_$(date '+%Y%m%d_%H%M%S').dmp"
+        local sas_url=$(getsasurl "$4")
+        /tools/dotnet-dump collect -p "$4" -o "$dump_file" > /dev/null
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): Memory dump has been collected. Uploading it to Azure Blob Container 'insights-logs-appserviceconsolelogs'" >> "$1"
+        /tools/azcopy copy "$dump_file" "$sas_url" > /dev/null
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): Memory dump has been uploaded to Azure Blob Container 'insights-logs-appserviceconsolelogs'" >> "$1"
+    fi
 }
 
 function collecttrace()
 {
-    # $1-output_file, $2-trace_lock_file, $3-instance, $4-pid
-    trace_file="trace_${3}_$(date '+%Y%m%d_%H%M%S').txt"
-    echo "Collecting trace data..." >> "$1"
-    echo "Acquiring trace lock..." >> "$1" && touch "$2" && echo "Trace collected by $3" >> "$2"
-    /tools/dotnet-trace collect --process-id "$4" --output "$trace_file" > /dev/null && \
-       echo "Trace data has been collected. Uploading it to Azure Blob Container 'insights-logs-appserviceconsolelogs'" >> "$1" && \
-       /tools/azcopy copy "$trace_file" "$sas_url" > /dev/null && \
-       echo "Trace data has been uploaded to Azure Blob Container 'insights-logs-appserviceconsolelogs'" >> "$1" &
+    # $1-$output_file, $2-$trace_lock_file, $3-$instance, $4-$pid
+    if [[ ! -e "$2" ]]; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): Acquiring lock for tracing..." >> "$1" && touch "$2" && echo "Profiler trace is collected by $3" >> "$2"
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): Collecting profiler trace..." >> "$1"
+        local trace_file="trace_$3_$(date '+%Y%m%d_%H%M%S').nettrace"
+        local sas_url=$(getsasurl "$4")
+        /tools/dotnet-trace collect -p "$4" -o "$trace_file" --duration 00:01:00 > /dev/null
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): Profiler trace has been collected. Uploading it to Azure Blob Container 'insights-logs-appserviceconsolelogs'" >> "$1"
+        /tools/azcopy copy "$trace_file" "$sas_url" > /dev/null
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): Profiler trace has been uploaded to Azure Blob Container 'insights-logs-appserviceconsolelogs'" >> "$1"
+    fi
 }
-
-# Initialized values for script's arguments
-enable_dump=false
-enable_trace=false
-
-if [[ "$#" -gt 0 ]]; then
-    case $1 in
-        enable-dump)
-            enable_dump=true
-            ;;
-        enable-trace)
-            enable_trace=true
-            ;;
-        enable-dump-trace)
-            enable_dump=true
-            enable_trace=true
-            ;;
-        *)
-            die "Unknown argument passed: $1" 1
-            ;;
-    esac
-fi
 
 while getopts ":t:hc" opt; do
     case $opt in
@@ -101,13 +104,7 @@ shift $(( OPTIND - 1 ))
 
 # Cleaning all processes generated by the script
 if [[ "$clean_flag" -eq 1 ]]; then
-    echo "Shutting down dotnet-counters collect process..."
-    kill -SIGTERM $(ps -ef | grep "/tools/dotnet-counters" | grep -v grep | tr -s " " | cut -d" " -f2 | xargs)
-    echo "Shutting down $script_name process..."
-    kill -SIGTERM $(ps -ef | grep "$script_name" | grep -v grep | tr -s " " | cut -d" " -f2 | xargs)
-    echo "Finishing up..."
-    echo "Completed"
-    exit 0
+    teardown
 fi
 
 # Define default threshold value for the number of threads
@@ -116,10 +113,31 @@ if [[ -z "$threshold" ]]; then
     threshold=100
 fi
 
+# Initialize dump and trace flags
+enable_dump=false
+enable_trace=false
+if [[ "$#" -gt 0 ]]; then
+    case $1 in
+        enable-dump)
+            enable_dump=true
+            ;;
+        enable-trace)
+            enable_trace=true
+            ;;
+        enable-dump-trace)
+            enable_dump=true
+            enable_trace=true
+            ;;
+        *)
+            die "Unknown argument passed: $1" 1
+            ;;
+    esac
+fi
+
 # Find the PID of the .NET application
 pid=$(/tools/dotnet-dump ps | grep /usr/share/dotnet/dotnet | grep -v grep | tr -s " " | cut -d" " -f2)
 if [ -z "$pid" ]; then
-  die "There is no .NET process running" 1
+    die "There is no .NET process running" 1
 fi
 
 # Get the computer name from /proc/PID/environ, where PID is .net core process's pid
@@ -128,21 +146,16 @@ if [[ -z "$instance" ]]; then
     die "Cannot find the environment variable of COMPUTERNAME" >&2 1
 fi
 
-# Get sas url
-sas_url=$(getsasurl "$pid")
-
 # Output dir is named after instance name
 output_dir="threadcount-logs-$instance"
-
 # Create output directory if it doesn't exist
 mkdir -p "$output_dir"
 
-# name of the file storing output of dotnet-counters collect
-runtime_counter_log_file="dotnet-runtime-metrics-$instance.csv"
-
-# name of the lock file for generating memdump
+# Name of the lock files for generating memdump and trace
 dump_lock_file="dump_taken.lock"
 trace_lock_file="trace_taken.lock"
+# Name of the file storing output of dotnet-counters collect
+runtime_counter_log_file="dotnet-runtime-metrics-$instance.csv"
 
 # Collect the .NET process' runtime metrics by starting the dotnet-counters collect command in background
 /tools/dotnet-counters collect --process-id "$pid" --counters System.Runtime --output "$runtime_counter_log_file" > /dev/null &
@@ -153,8 +166,7 @@ while [[ ! -e "$runtime_counter_log_file" ]]; do
 done
 
 # Function to truncate collected metric data file
-# syntax: trunc <filename>
-trunc() {
+function trunc() {
     MAX_SIZE=$(( 1*1024*1024 )) # 1 MB
     while [[ -f "$1" ]]; do
         file_size=$(stat -c%s "$1")
@@ -165,32 +177,35 @@ trunc() {
     done
 }
 
-# Read the log
+# Start monitoring
 if [[ -e "$runtime_counter_log_file" ]]; then
     # Start a thread to monitor the size of $runtime_counter_log_file & truncate it
     trunc "$runtime_counter_log_file" &
+    
     # Reading metric data in $runtime_counter_log_file to extract threadcount information
     tail -f "$runtime_counter_log_file" | while read -r line; do
-        # Check if it's a new hour
+        # Check if it's a new hour for rotating logs
         current_hour=$(date +"%Y-%m-%d_%H")
         if [ "$current_hour" != "$previous_hour" ]; then
             # Rotate the file
             output_file="$output_dir/threadcount_${current_hour}.log"
             previous_hour="$current_hour"
         fi
+        
         if [[ $line == *"ThreadPool Thread Count"* ]]; then
             thread_count=$(echo "$line" | awk -F ',' '{print $NF}')
             timestamp=$(echo "$line" | awk -F ',' '{print $1}')
             echo "$timestamp: Thread Pool Thread Count: $thread_count" >> "$output_file"
-            # Compare with the threshold value
+            
+            # Compare with the threshold value and collect dump/trace if exceeded
             if [[ "$thread_count" -ge "$threshold" ]]; then
                 if [[ "$enable_dump" == true ]]; then
                     collectdump "$output_file" "$dump_lock_file" "$instance" "$pid" &
                 fi
-
+                
                 if [[ "$enable_trace" == true ]]; then
                     collecttrace "$output_file" "$trace_lock_file" "$instance" "$pid" &
-                fi  
+                fi
             fi
         fi
     done
