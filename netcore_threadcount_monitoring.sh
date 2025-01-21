@@ -3,9 +3,10 @@
 # This script is for monitoring the number of threads of a .NET core application.
 # If the thread count exceeds a predefined threshold, then the script will automatically generate a memory dump and/or profiler trace for investigation.
 #
-# author: Tuan Hoang
+# Author: Tuan Hoang
+# Date created: 28 May 2024
 # Updated: Mainul Hossain
-# 20 Jan 2025
+# Update Date: 20 Jan 2025
 script_name=${0##*/}
 
 function usage()
