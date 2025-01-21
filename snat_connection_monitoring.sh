@@ -3,7 +3,7 @@
 # This script is for monitoring outbound connections of a .NET core application.
 # If the number of outbound connections exceeds a predefined threshold, 
 # then the script will automatically generate a memory dump and/or profiler trace for investigation.
-# Script combined from work of : Ander Wahlqvist and Tuan Hoang 
+# Script combined from work of: Ander Wahlqvist and Tuan Hoang 
 # Author: Mainul Hossain
 # Created: January 21, 2025
 
