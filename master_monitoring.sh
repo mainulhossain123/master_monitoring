@@ -107,9 +107,9 @@ else
 fi
 
 # Define URLs for the diagnostic scripts
-THREADCOUNT_SCRIPT_URL="https://raw.githubusercontent.com/mainulhossain123/master_monitoring/refs/heads/main/netcore_threadcount_monitoring.sh"
-RESPONSETIME_SCRIPT_URL="https://raw.githubusercontent.com/mainulhossain123/master_monitoring/refs/heads/main/resp_monitoring.sh"
-SNAT_CONNECTION_MONITORING_SCRIPT_URL="https://raw.githubusercontent.com/mainulhossain123/master_monitoring/refs/heads/main/snat_connection_monitoring.sh"
+THREADCOUNT_SCRIPT_URL="https://raw.githubusercontent.com/bkstar123/netcore_counters_monitoring/refs/heads/master/netcore_threadcount_monitoring.sh"
+RESPONSETIME_SCRIPT_URL="https://raw.githubusercontent.com/bkstar123/http_response_time_monitoring/refs/heads/master/resp_monitoring.sh"
+SNAT_CONNECTION_MONITORING_SCRIPT_URL="https://raw.githubusercontent.com/bkstar123/outbound_connection_monitoring/refs/heads/master/snat_connection_monitoring.sh"
 
 # Check if curl is installed, if not install it
 if ! command -v curl &> /dev/null; then
