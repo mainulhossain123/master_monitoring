@@ -50,7 +50,7 @@ if [ "$CLEANUP" = true ]; then
     echo "Stopping all diagnostic scripts..."
     ./threadcount/netcore_threadcount_monitoring_upt.sh -c 2>/dev/null
     ./responsetime/resp_monitoring_upt.sh -c 2>/dev/null
-    ./outboundconnection/snat_connection_monitoring_upt.sh -c 2>/dev/null
+    ./outboundconnection/snat_connection_monitoring.sh -c 2>/dev/null
     kill -SIGTERM $(ps -ef | grep "$master_script_name" | grep -v grep | tr -s " " | cut -d" " -f2 | xargs)
     exit 0
 fi
