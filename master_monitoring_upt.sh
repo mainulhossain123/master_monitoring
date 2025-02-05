@@ -48,8 +48,8 @@ shift $((OPTIND - 1))
 # Check if cleanup is requested
 if [ "$CLEANUP" = true ]; then
     echo "Stopping all diagnostic scripts..."
-    ./threadcount/netcore_threadcount_monitoring_upt.sh -c 2>/dev/null
-    ./responsetime/resp_monitoring_upt.sh -c 2>/dev/null
+    ./threadcount/netcore_threadcount_monitoring.sh -c 2>/dev/null
+    ./responsetime/resp_monitoring.sh -c 2>/dev/null
     ./outboundconnection/snat_connection_monitoring.sh -c 2>/dev/null
     kill -SIGTERM $(ps -ef | grep "$master_script_name" | grep -v grep | tr -s " " | cut -d" " -f2 | xargs)
     exit 0
@@ -107,9 +107,9 @@ else
 fi
 
 # Define URLs for the diagnostic scripts
-THREADCOUNT_SCRIPT_URL="https://raw.githubusercontent.com/mainulhossain123/master_monitoring/refs/heads/testing/netcore_threadcount_monitoring_upt.sh"
-RESPONSETIME_SCRIPT_URL="https://raw.githubusercontent.com/mainulhossain123/master_monitoring/refs/heads/testing/resp_monitoring_upt.sh"
-SNAT_CONNECTION_MONITORING_SCRIPT_URL="https://raw.githubusercontent.com/mainulhossain123/master_monitoring/refs/heads/testing/snat_connection_monitoring.sh"
+THREADCOUNT_SCRIPT_URL="https://raw.githubusercontent.com/bkstar123/netcore_counters_monitoring/refs/heads/master/netcore_threadcount_monitoring.sh"
+RESPONSETIME_SCRIPT_URL="https://raw.githubusercontent.com/bkstar123/http_response_time_monitoring/refs/heads/master/resp_monitoring.sh"
+SNAT_CONNECTION_MONITORING_SCRIPT_URL="https://raw.githubusercontent.com/bkstar123/outbound_connection_monitoring/refs/heads/master/snat_connection_monitoring.sh"
 
 # Check if curl is installed, if not install it
 if ! command -v curl &> /dev/null; then
