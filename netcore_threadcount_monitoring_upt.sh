@@ -5,7 +5,7 @@
 #
 # author: Tuan Hoang
 # Updated: Mainul Hossain
-# 05 Feb 2025
+# 20 Jan 2025
 script_name=${0##*/}
 
 function usage()
@@ -66,7 +66,7 @@ function collectdump()
 
         local retry_count=0
         local max_retries=5
-        while [[ $retry_count -lt $max_retries ]]; do
+        while [[ $retry_count -le $max_retries ]]; do
             azcopy_output=$(/tools/azcopy copy "$dump_file" "$sas_url" 2>&1)
             if echo "$azcopy_output" | grep -q "Final Job Status: Completed"; then
                 echo "$(date '+%Y-%m-%d %H:%M:%S'): Memory dump has been successfully uploaded to Azure Blob Container." >> "$1"
@@ -78,7 +78,7 @@ function collectdump()
             fi
         done
 
-        if [[ $retry_count -eq $max_retries ]]; then
+        if [[ $retry_count -gt $max_retries ]]; then
             echo "$(date '+%Y-%m-%d %H:%M:%S'): ERROR: AzCopy failed to upload memory dump after $max_retries attempts." >> "$1"
         fi
     fi
@@ -97,7 +97,7 @@ function collecttrace()
 
         local retry_count=0
         local max_retries=5
-        while [[ $retry_count -lt $max_retries ]]; do
+        while [[ $retry_count -le $max_retries ]]; do
             azcopy_output=$(/tools/azcopy copy "$trace_file" "$sas_url" 2>&1)
             if echo "$azcopy_output" | grep -q "Final Job Status: Completed"; then
                 echo "$(date '+%Y-%m-%d %H:%M:%S'): Profiler trace has been successfully uploaded to Azure Blob Container." >> "$1"
@@ -109,7 +109,7 @@ function collecttrace()
             fi
         done
 
-        if [[ $retry_count -eq $max_retries ]]; then
+        if [[ $retry_count -gt $max_retries ]]; then
             echo "$(date '+%Y-%m-%d %H:%M:%S'): ERROR: AzCopy failed to upload profiler trace after $max_retries attempts." >> "$1"
         fi
     fi
