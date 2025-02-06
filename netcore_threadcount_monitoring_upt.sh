@@ -73,7 +73,7 @@ function collectdump()
                 return 0
             fi
             ((retry_count++))
-            if [[ $retry_count -ge $max_retries ]]; then
+            elif [[ $retry_count -ge $max_retries ]]; then
                 echo "$(date '+%Y-%m-%d %H:%M:%S'): AzCopy failed to upload memory dump. Retrying... ($retry_count/$max_retries)" >> "$1"
                 sleep 5
             fi
@@ -104,7 +104,7 @@ function collecttrace()
                 return 0
             fi
             ((retry_count++))
-            if [[ $retry_count -ge $max_retries ]]; then
+            elif [[ $retry_count -ge $max_retries ]]; then
                 echo "$(date '+%Y-%m-%d %H:%M:%S'): AzCopy failed to upload memory dump. Retrying... ($retry_count/$max_retries)" >> "$1"
                 sleep 5
             fi
