@@ -65,7 +65,7 @@ function collectdump()
         echo "$(date '+%Y-%m-%d %H:%M:%S'): Memory dump has been collected. Uploading it to Azure Blob Container 'insights-logs-appserviceconsolelogs'" >> "$1"
 
         local retry_count=0
-        local max_retries=5
+        local max_retries=6
         while [[ $retry_count -le $max_retries ]]; do
             azcopy_output=$(/tools/azcopy copy "$dump_file" "$sas_url" 2>&1)
             if echo "$azcopy_output" | grep -q "Final Job Status: Completed"; then
