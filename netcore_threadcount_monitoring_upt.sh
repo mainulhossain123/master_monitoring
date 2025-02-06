@@ -66,7 +66,7 @@ function collectdump()
 
         local retry_count=0
         local max_retries=5
-        while [[ $retry_count -lt $max_retries ]]; do
+        while [[ $retry_count -le $max_retries ]]; do
             azcopy_output=$(/tools/azcopy copy "$dump_file" "$sas_url" 2>&1)
             if echo "$azcopy_output" | grep -q "Final Job Status: Completed"; then
                 echo "$(date '+%Y-%m-%d %H:%M:%S'): Memory dump has been successfully uploaded to Azure Blob Container." >> "$1"
@@ -98,7 +98,7 @@ function collecttrace()
 
         local retry_count=0
         local max_retries=5
-        while [[ $retry_count -lt $max_retries ]]; do
+        while [[ $retry_count -le $max_retries ]]; do
             azcopy_output=$(/tools/azcopy copy "$dump_file" "$sas_url" 2>&1)
             if echo "$azcopy_output" | grep -q "Final Job Status: Completed"; then
                 echo "$(date '+%Y-%m-%d %H:%M:%S'): Memory dump has been successfully uploaded to Azure Blob Container." >> "$1"
