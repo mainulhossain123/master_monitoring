@@ -71,11 +71,11 @@ function collectdump()
             if echo "$azcopy_output" | grep -q "Final Job Status: Completed"; then
                 echo "$(date '+%Y-%m-%d %H:%M:%S'): Memory dump has been successfully uploaded to Azure Blob Container." >> "$1"
                 return 0
-            elif
+            fi
             ((retry_count++))
-            [[ $retry_count -gt $max_retries ]]; then
-            echo "$(date '+%Y-%m-%d %H:%M:%S'): AzCopy failed to upload profiler trace. Retrying... (Attempt $retry_count/$max_retries)" >> "$1"
-            sleep 5
+            if [[ $retry_count -lt $max_retries ]]; then
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): AzCopy failed to upload memory dump. Retrying... ($retry_count/$max_retries)" >> "$1"
+                sleep 5
             fi
         done
 
@@ -102,11 +102,11 @@ function collecttrace()
             if echo "$azcopy_output" | grep -q "Final Job Status: Completed"; then
                 echo "$(date '+%Y-%m-%d %H:%M:%S'): Profiler trace has been successfully uploaded to Azure Blob Container." >> "$1"
                 return 0
-            elif
+            fi
             ((retry_count++))
-            [[ $retry_count -gt $max_retries ]]; then
-            echo "$(date '+%Y-%m-%d %H:%M:%S'): AzCopy failed to upload profiler trace. Retrying... (Attempt $retry_count/$max_retries)" >> "$1"
-            sleep 5
+            if [[ $retry_count -lt $max_retries ]]; then
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): AzCopy failed to upload memory dump. Retrying... ($retry_count/$max_retries)" >> "$1"
+                sleep 5
             fi
         done
 
@@ -114,7 +114,6 @@ function collecttrace()
         return 1
     fi
 }
-
 
 while getopts ":t:hc" opt; do
     case $opt in
