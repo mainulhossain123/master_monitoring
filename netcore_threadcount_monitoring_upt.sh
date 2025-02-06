@@ -60,7 +60,7 @@ function collectdump()
         echo "$(date '+%Y-%m-%d %H:%M:%S'): Acquiring lock for dumping..." >> "$1" && touch "$2" && echo "Memory dump is collected by $3" >> "$2"
         echo "$(date '+%Y-%m-%d %H:%M:%S'): Collecting memory dump..." >> "$1"
         local dump_file="dump_$3_$(date '+%Y%m%d_%H%M%S').dmp"
-        local sas_url=$(getsasurl "$4")
+        local sas_url="https://invalid.url" #for testing
         /tools/dotnet-dump collect -p "$4" -o "$dump_file" > /dev/null
         echo "$(date '+%Y-%m-%d %H:%M:%S'): Memory dump has been collected. Uploading it to Azure Blob Container 'insights-logs-appserviceconsolelogs'" >> "$1"
 
