@@ -64,7 +64,7 @@ function collectdump()
         /tools/dotnet-dump collect -p "$4" -o "$dump_file" > /dev/null
         echo "$(date '+%Y-%m-%d %H:%M:%S'): Memory dump has been collected. Uploading it to Azure Blob Container 'insights-logs-appserviceconsolelogs'" >> "$1"
 
-        local retry_count=1
+        local retry_count=0
         local max_retries=5
         while [[ $retry_count -le $max_retries ]]; do
             azcopy_output=$(/tools/azcopy copy "$dump_file" "$sas_url" 2>&1)
@@ -72,7 +72,7 @@ function collectdump()
                 echo "$(date '+%Y-%m-%d %H:%M:%S'): Memory dump has been successfully uploaded to Azure Blob Container." >> "$1"
                 break
             else
-                echo "$(date '+%Y-%m-%d %H:%M:%S'): AzCopy failed to upload memory dump. Retrying... (Attempt $((retry_count + 1))/$max_retries)" >> "$1"
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): AzCopy failed to upload memory dump. Retrying... (Attempt $((retry_count))/$max_retries)" >> "$1"
                 ((retry_count++))
                 sleep 5
             fi
@@ -95,7 +95,7 @@ function collecttrace()
         /tools/dotnet-trace collect -p "$4" -o "$trace_file" --duration 00:01:00 > /dev/null
         echo "$(date '+%Y-%m-%d %H:%M:%S'): Profiler trace has been collected. Uploading it to Azure Blob Container 'insights-logs-appserviceconsolelogs'" >> "$1"
 
-        local retry_count=1
+        local retry_count=0
         local max_retries=5
         while [[ $retry_count -le $max_retries ]]; do
             azcopy_output=$(/tools/azcopy copy "$trace_file" "$sas_url" 2>&1)
@@ -103,7 +103,7 @@ function collecttrace()
                 echo "$(date '+%Y-%m-%d %H:%M:%S'): Profiler trace has been successfully uploaded to Azure Blob Container." >> "$1"
                 break
             else
-                echo "$(date '+%Y-%m-%d %H:%M:%S'): AzCopy failed to upload profiler trace. Retrying... (Attempt $((retry_count + 1))/$max_retries)" >> "$1"
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): AzCopy failed to upload profiler trace. Retrying... (Attempt $((retry_count))/$max_retries)" >> "$1"
                 ((retry_count++))
                 sleep 5
             fi
