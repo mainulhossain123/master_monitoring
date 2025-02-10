@@ -72,8 +72,8 @@ function collectdump()
                 echo "$(date '+%Y-%m-%d %H:%M:%S'): Memory dump has been successfully uploaded to Azure Blob Container." >> "$1"
                 break
             else
-                echo "$(date '+%Y-%m-%d %H:%M:%S'): AzCopy failed to upload memory dump. Retrying... (Attempt $((retry_count))/$max_retries)" >> "$1"
                 ((retry_count++))
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): AzCopy failed to upload memory dump. Retrying... (Attempt $((retry_count))/$max_retries)" >> "$1"
                 sleep 5
             fi
         done
@@ -103,8 +103,8 @@ function collecttrace()
                 echo "$(date '+%Y-%m-%d %H:%M:%S'): Profiler trace has been successfully uploaded to Azure Blob Container." >> "$1"
                 break
             else
-                echo "$(date '+%Y-%m-%d %H:%M:%S'): AzCopy failed to upload profiler trace. Retrying... (Attempt $((retry_count))/$max_retries)" >> "$1"
                 ((retry_count++))
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): AzCopy failed to upload profiler trace. Retrying... (Attempt $((retry_count))/$max_retries)" >> "$1"
                 sleep 5
             fi
         done
