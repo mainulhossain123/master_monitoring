@@ -5,7 +5,7 @@
 #
 # author: Tuan Hoang
 # Updated: Mainul Hossain
-# 20 Jan 2025
+# 11 Feb 2025
 script_name=${0##*/}
 
 function usage()
@@ -60,7 +60,7 @@ function collectdump()
         echo "$(date '+%Y-%m-%d %H:%M:%S'): Acquiring lock for dumping..." >> "$1" && touch "$2" && echo "Memory dump is collected by $3" >> "$2"
         echo "$(date '+%Y-%m-%d %H:%M:%S'): Collecting memory dump..." >> "$1"
         local dump_file="dump_$3_$(date '+%Y%m%d_%H%M%S').dmp"
-        local sas_url="https://invalid.url" #$(getsasurl "$4")
+        local sas_url= $(getsasurl "$4")
         /tools/dotnet-dump collect -p "$4" -o "$dump_file" > /dev/null
         echo "$(date '+%Y-%m-%d %H:%M:%S'): Memory dump has been collected. Uploading it to Azure Blob Container 'insights-logs-appserviceconsolelogs'" >> "$1"
 
@@ -100,7 +100,7 @@ function collecttrace()
         echo "$(date '+%Y-%m-%d %H:%M:%S'): Acquiring lock for tracing..." >> "$1" && touch "$2" && echo "Profiler trace is collected by $3" >> "$2"
         echo "$(date '+%Y-%m-%d %H:%M:%S'): Collecting profiler trace..." >> "$1"
         local trace_file="trace_$3_$(date '+%Y%m%d_%H%M%S').nettrace"
-        local sas_url="https://invalid.url" #$(getsasurl "$4")
+        local sas_url= $(getsasurl "$4")
         /tools/dotnet-trace collect -p "$4" -o "$trace_file" --duration 00:01:00 > /dev/null
         echo "$(date '+%Y-%m-%d %H:%M:%S'): Profiler trace has been collected. Uploading it to Azure Blob Container 'insights-logs-appserviceconsolelogs'" >> "$1"
 
