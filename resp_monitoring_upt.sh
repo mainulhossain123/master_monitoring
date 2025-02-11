@@ -5,7 +5,7 @@
 #
 # author: Tuan Hoang
 # 21 June 2024
-# Updated = Mainul Hossain
+# Updated: Mainul Hossain
 # 05 Feb 2025
 script_name=${0##*/}
 function usage()
