@@ -6,7 +6,7 @@
 # Script combined from work of : Ander Wahlqvist and Tuan Hoang 
 # Author: Mainul Hossain
 # Created: January 21, 2025
-# Updated: 11 Feb 2025
+# Updated: 12 Feb 2025
 
 script_name=${0##*/}
 
@@ -61,8 +61,9 @@ function getsasurl()
 function collectdump()
 {
     # $1-$output_file, $2-$dump_lock_file, $3-$instance, $4-$pid
-    if [[ ! -e "$2" ]]; then
-        echo "$(date '+%Y-%m-%d %H:%M:%S'): Acquiring lock for dumping..." >> "$1" && touch "$2" && echo "Memory dump is collected by $3" >> "$2"
+    local instance_lock_file="dump_taken_${3}.lock"
+    if [[ ! -e "$instance_lock_file" ]]; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): Acquiring lock for dumping..." >> "$1" && touch "$instance_lock_file" && echo "Memory dump is collected by $3" >> "$instance_lock_file"
         echo "$(date '+%Y-%m-%d %H:%M:%S'): Collecting memory dump..." >> "$1"
         local dump_file="dump_$3_$(date '+%Y%m%d_%H%M%S').dmp"
         local sas_url=$(getsasurl "$4")
@@ -101,8 +102,9 @@ function collectdump()
 function collecttrace()
 {
     # $1-$output_file, $2-$trace_lock_file, $3-$instance, $4-$pid
-    if [[ ! -e "$2" ]]; then
-        echo "$(date '+%Y-%m-%d %H:%M:%S'): Acquiring lock for tracing..." >> "$1" && touch "$2" && echo "Profiler trace is collected by $3" >> "$2"
+    local instance_lock_file="trace_taken_${3}.lock"
+    if [[ ! -e "$instance_lock_file" ]]; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): Acquiring lock for tracing..." >> "$1" && touch "$instance_lock_file" && echo "Profiler trace is collected by $3" >> "$instance_lock_file"
         echo "$(date '+%Y-%m-%d %H:%M:%S'): Collecting profiler trace..." >> "$1"
         local trace_file="trace_$3_$(date '+%Y%m%d_%H%M%S').nettrace"
         local sas_url=$(getsasurl "$4")
@@ -266,8 +268,10 @@ fi
 # Setup output directory and files
 output_dir="outconn-logs-${instance}"
 mkdir -p "$output_dir"
-dump_lock_file="dump_taken.lock"
-trace_lock_file="trace_taken.lock"
+
+# Now using instance-specific lock files
+dump_lock_file="dump_taken_${instance}.lock"
+trace_lock_file="trace_taken_${instance}.lock"
 
 # Start monitoring
 while true; do
