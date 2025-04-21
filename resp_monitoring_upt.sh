@@ -230,6 +230,8 @@ timeout=$(( threshold + 5000 ))
 # Extract host:port part of the monitored URL
 url="${location#*://}"
 host_and_port="${url%%/*}"
+# Extract hostname for Host header
+hostname="${url%%/*}"
 
 # Start monitoring
 while true; do
@@ -241,13 +243,14 @@ while true; do
         previous_hour="$current_hour"
     fi
     
-    # Determine if we should use --resolve based on the URL
+    # Check if URL is localhost or external domain hosted locally
     if [[ "$location" == "http://localhost"* ]]; then
-        # For localhost URLs, use the --resolve flag
+        # For direct localhost URLs, use the original approach
         read -r respTimeInSeconds httpCode <<< $(curl -so /dev/null -w "%{time_total} %{http_code}" -m $timeout $location --resolve "$host_and_port":127.0.0.1)
     else
-        # For external URLs, don't use the --resolve flag
-        read -r respTimeInSeconds httpCode <<< $(curl -so /dev/null -w "%{time_total} %{http_code}" -m $timeout $location)
+        # For virtual hosts, use Host header with localhost
+        protocol="${location%%://*}"
+        read -r respTimeInSeconds httpCode <<< $(curl -so /dev/null -w "%{time_total} %{http_code}" -m $timeout -H "Host:$hostname" "$protocol://localhost")
     fi
     
     curl_code=$?
