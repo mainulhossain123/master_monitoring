@@ -6,7 +6,7 @@
 # author: Tuan Hoang
 # 21 June 2024
 # Updated: Mainul Hossain
-# 12 Feb 2025
+# 21 April 2025
 script_name=${0##*/}
 function usage()
 {
@@ -230,8 +230,6 @@ timeout=$(( threshold + 5000 ))
 # Extract host:port part of the monitored URL
 url="${location#*://}"
 host_and_port="${url%%/*}"
-# Extract hostname for Host header
-hostname="${url%%/*}"
 
 # Start monitoring
 while true; do
@@ -242,15 +240,18 @@ while true; do
         output_file="$output_dir/resptime_stats_${current_hour}.log"
         previous_hour="$current_hour"
     fi
-    
-    # Check if URL is localhost or external domain hosted locally
-    if [[ "$location" == "http://localhost:80"* ]]; then
+
+    # Handle different URL monitoring scenarios
+    if [[ "$location" == "http://localhost"* ]]; then
         # For direct localhost URLs, use the original approach
-        read -r respTimeInSeconds httpCode <<< $(curl -so /dev/null -w "%{time_total} %{http_code}" -m $timeout $location --resolve "$host_and_port":127.0.0.1)
+        read -r respTimeInSeconds httpCode <<< $(curl -so /dev/null -w "%{time_total} %{http_code}" -m $timeout "$location" --resolve "$host_and_port":127.0.0.1)
+    elif [[ "$host_and_port" == "www.unlimitedvacationclub.com"* ]]; then
+        # Special handling for www.unlimitedvacationclub.com (virtual host)
+        # Use simple approach that you confirmed works
+        read -r respTimeInSeconds httpCode <<< $(curl -so /dev/null -w "%{time_total} %{http_code}" -m $timeout -H "Host:$host_and_port" "http://localhost")
     else
-        # For virtual hosts, use Host header with localhost
-        protocol="${location%%://*}"
-        read -r respTimeInSeconds httpCode <<< $(curl -so /dev/null -w "%{time_total} %{http_code}" -m $timeout -H "Host:$hostname" "$protocol://localhost")
+        # For other URLs, try normal connection with Host header
+        read -r respTimeInSeconds httpCode <<< $(curl -so /dev/null -w "%{time_total} %{http_code}" -m $timeout -H "Host:$host_and_port" "http://localhost")
     fi
     
     curl_code=$?
@@ -260,7 +261,7 @@ while true; do
     else
         # Convert to miliseconds
         respTimeinMiliSeconds=$(echo "$respTimeInSeconds*1000/1" | bc)
-        echo "$(date '+%Y-%m-%d %H:%M:%S'): Response Time $respTimeinMiliSeconds (ms), Status Code $httpCode" >> "$output_file"
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): Response Time $respTimeinMiliSeconds (ms), Status Code $httpCode for $location" >> "$output_file"
     fi   
     # Collect memory dump if HTTP response time reaches the threshold & HTTP code is in [200, 301, 302]  
     if [[ "$respTimeinMiliSeconds" -ge "$threshold" ]]; then
