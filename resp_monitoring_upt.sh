@@ -4,9 +4,9 @@
 # If the response time exceeds a predefined threshold, then the script will automatically generate a memory dump/profiler trace for investigation.
 #
 # author: Tuan Hoang
+# 21 June 2024
 # Updated: Mainul Hossain
-# 11 Feb 2025
-
+# 21 April 2025
 script_name=${0##*/}
 function usage()
 {
@@ -52,9 +52,8 @@ function getcomputername()
 function collectdump()
 {
     # $1-$output_file, $2-$dump_lock_file, $3-$instance, $4-$pid
-    local instance_lock_file="dump_taken_${3}.lock"
-    if [[ ! -e "$instance_lock_file" ]]; then
-        echo "$(date '+%Y-%m-%d %H:%M:%S'): Acquiring lock for dumping..." >> "$1" && touch "$instance_lock_file" && echo "Memory dump is collected by $3" >> "$instance_lock_file"
+    if [[ ! -e "$2" ]]; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): Acquiring lock for dumping..." >> "$1" && touch "$2" && echo "Memory dump is collected by $3" >> "$2"
         echo "$(date '+%Y-%m-%d %H:%M:%S'): Collecting memory dump..." >> "$1"
         local dump_file="dump_$3_$(date '+%Y%m%d_%H%M%S').dmp"
         local sas_url=$(getsasurl "$4")
@@ -93,9 +92,8 @@ function collectdump()
 function collecttrace()
 {
     # $1-$output_file, $2-$trace_lock_file, $3-$instance, $4-$pid
-    local instance_lock_file="trace_taken_${3}.lock"
-    if [[ ! -e "$instance_lock_file" ]]; then
-        echo "$(date '+%Y-%m-%d %H:%M:%S'): Acquiring lock for tracing..." >> "$1" && touch "$instance_lock_file" && echo "Profiler trace is collected by $3" >> "$instance_lock_file"
+    if [[ ! -e "$2" ]]; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): Acquiring lock for tracing..." >> "$1" && touch "$2" && echo "Profiler trace is collected by $3" >> "$2"
         echo "$(date '+%Y-%m-%d %H:%M:%S'): Collecting profiler trace..." >> "$1"
         local trace_file="trace_$3_$(date '+%Y%m%d_%H%M%S').nettrace"
         local sas_url=$(getsasurl "$4")
@@ -208,7 +206,6 @@ if ! command -v bc &> /dev/null; then
     echo "###Info: bc is not installed. Installing bc...."
     apt-get update && apt-get install -y bc
 fi
-
 # Find the PID of the .NET application
 pid=$(/tools/dotnet-dump ps | grep /usr/share/dotnet/dotnet | grep -v grep | tr -s " " | cut -d" " -f2)
 if [ -z "$pid" ]; then
@@ -220,16 +217,14 @@ instance=$(getcomputername "$pid")
 if [[ -z "$instance" ]]; then
     die "Cannot find the environment variable of COMPUTERNAME" >&2 1
 fi
-
 # Output dir is named after instance name
 output_dir="resptime-logs-$instance"
 # Create output directory if it doesn't exist
 mkdir -p "$output_dir"
-
-# Name of the lock files for generating memdump and trace (now instance-specific)
-dump_lock_file="dump_taken_${instance}.lock"
-trace_lock_file="trace_taken_${instance}.lock"
-
+# name of the lock file for generating memdump
+dump_lock_file="dump_taken.lock"
+# name of the lock file for generating trace
+trace_lock_file="trace_taken.lock"
 # Set timeout for curl command as 5s after exceeding the threshold
 timeout=$(( threshold + 5000 ))
 # Extract host:port part of the monitored URL
@@ -245,8 +240,16 @@ while true; do
         output_file="$output_dir/resptime_stats_${current_hour}.log"
         previous_hour="$current_hour"
     fi
-    # Read HTTP Response time & Status code into separated variables
-    read -r respTimeInSeconds httpCode <<< $(curl -so /dev/null -w "%{time_total} %{http_code}" -m $timeout $location --resolve "$host_and_port":127.0.0.1)
+    
+    # Determine if we should use --resolve based on the URL
+    if [[ "$location" == "http://localhost"* ]]; then
+        # For localhost URLs, use the --resolve flag
+        read -r respTimeInSeconds httpCode <<< $(curl -so /dev/null -w "%{time_total} %{http_code}" -m $timeout $location --resolve "$host_and_port":127.0.0.1)
+    else
+        # For external URLs, don't use the --resolve flag
+        read -r respTimeInSeconds httpCode <<< $(curl -so /dev/null -w "%{time_total} %{http_code}" -m $timeout $location)
+    fi
+    
     curl_code=$?
     if [[ $curl_code -eq 28 ]]; then
         respTimeinMiliSeconds=$timeout
