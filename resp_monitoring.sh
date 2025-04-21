@@ -6,7 +6,7 @@
 # author: Tuan Hoang
 # 21 June 2024
 # Updated: Mainul Hossain
-# 11 Feb 2025
+# 21 April 2025
 script_name=${0##*/}
 function usage()
 {
@@ -240,8 +240,20 @@ while true; do
         output_file="$output_dir/resptime_stats_${current_hour}.log"
         previous_hour="$current_hour"
     fi
-    # Read HTTP Response time & Status code into separated variables
-    read -r respTimeInSeconds httpCode <<< $(curl -so /dev/null -w "%{time_total} %{http_code}" -m $timeout $location --resolve "$host_and_port":127.0.0.1)
+
+    # Handle different URL monitoring scenarios
+    if [[ "$location" == "http://localhost"* ]]; then
+        # For direct localhost URLs, use the original approach
+        read -r respTimeInSeconds httpCode <<< $(curl -so /dev/null -w "%{time_total} %{http_code}" -m $timeout "$location" --resolve "$host_and_port":127.0.0.1)
+    elif [[ "$host_and_port" == "www.unlimitedvacationclub.com"* ]]; then
+        # Special handling for www.unlimitedvacationclub.com (virtual host)
+        # Use simple approach that you confirmed works
+        read -r respTimeInSeconds httpCode <<< $(curl -so /dev/null -w "%{time_total} %{http_code}" -m $timeout -H "Host:$host_and_port" "http://localhost")
+    else
+        # For other URLs, try normal connection with Host header
+        read -r respTimeInSeconds httpCode <<< $(curl -so /dev/null -w "%{time_total} %{http_code}" -m $timeout -H "Host:$host_and_port" "http://localhost")
+    fi
+    
     curl_code=$?
     if [[ $curl_code -eq 28 ]]; then
         respTimeinMiliSeconds=$timeout
@@ -249,7 +261,7 @@ while true; do
     else
         # Convert to miliseconds
         respTimeinMiliSeconds=$(echo "$respTimeInSeconds*1000/1" | bc)
-        echo "$(date '+%Y-%m-%d %H:%M:%S'): Response Time $respTimeinMiliSeconds (ms), Status Code $httpCode" >> "$output_file"
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): Response Time $respTimeinMiliSeconds (ms), Status Code $httpCode for $location" >> "$output_file"
     fi   
     # Collect memory dump if HTTP response time reaches the threshold & HTTP code is in [200, 301, 302]  
     if [[ "$respTimeinMiliSeconds" -ge "$threshold" ]]; then
