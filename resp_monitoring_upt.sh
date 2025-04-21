@@ -6,7 +6,7 @@
 # author: Tuan Hoang
 # 21 June 2024
 # Updated: Mainul Hossain
-# 21 April 2025
+# 12 Feb 2025
 script_name=${0##*/}
 function usage()
 {
@@ -244,7 +244,7 @@ while true; do
     fi
     
     # Check if URL is localhost or external domain hosted locally
-    if [[ "$location" == "http://localhost"* ]]; then
+    if [[ "$location" == "http://localhost:80"* ]]; then
         # For direct localhost URLs, use the original approach
         read -r respTimeInSeconds httpCode <<< $(curl -so /dev/null -w "%{time_total} %{http_code}" -m $timeout $location --resolve "$host_and_port":127.0.0.1)
     else
