@@ -52,8 +52,9 @@ function getcomputername()
 function collectdump()
 {
     # $1-$output_file, $2-$dump_lock_file, $3-$instance, $4-$pid
-    if [[ ! -e "$2" ]]; then
-        echo "$(date '+%Y-%m-%d %H:%M:%S'): Acquiring lock for dumping..." >> "$1" && touch "$2" && echo "Memory dump is collected by $3" >> "$2"
+    local instance_lock_file="dump_taken_${3}.lock"
+    if [[ ! -e "$instance_lock_file" ]]; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): Acquiring lock for dumping..." >> "$1" && touch "$instance_lock_file" && echo "Memory dump is collected by $3" >> "$instance_lock_file"
         echo "$(date '+%Y-%m-%d %H:%M:%S'): Collecting memory dump..." >> "$1"
         local dump_file="dump_$3_$(date '+%Y%m%d_%H%M%S').dmp"
         local sas_url=$(getsasurl "$4")
@@ -92,8 +93,9 @@ function collectdump()
 function collecttrace()
 {
     # $1-$output_file, $2-$trace_lock_file, $3-$instance, $4-$pid
-    if [[ ! -e "$2" ]]; then
-        echo "$(date '+%Y-%m-%d %H:%M:%S'): Acquiring lock for tracing..." >> "$1" && touch "$2" && echo "Profiler trace is collected by $3" >> "$2"
+    local instance_lock_file="trace_taken_${3}.lock"
+    if [[ ! -e "$instance_lock_file" ]]; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): Acquiring lock for tracing..." >> "$1" && touch "$instance_lock_file" && echo "Profiler trace is collected by $3" >> "$instance_lock_file"
         echo "$(date '+%Y-%m-%d %H:%M:%S'): Collecting profiler trace..." >> "$1"
         local trace_file="trace_$3_$(date '+%Y%m%d_%H%M%S').nettrace"
         local sas_url=$(getsasurl "$4")
@@ -221,10 +223,11 @@ fi
 output_dir="resptime-logs-$instance"
 # Create output directory if it doesn't exist
 mkdir -p "$output_dir"
-# name of the lock file for generating memdump
-dump_lock_file="dump_taken.lock"
-# name of the lock file for generating trace
-trace_lock_file="trace_taken.lock"
+
+# Name of the lock files for generating memdump and trace (now instance-specific)
+dump_lock_file="dump_taken_${instance}.lock"
+trace_lock_file="trace_taken_${instance}.lock"
+
 # Set timeout for curl command as 5s after exceeding the threshold
 timeout=$(( threshold + 5000 ))
 # Extract host:port part of the monitored URL
@@ -263,7 +266,7 @@ while true; do
         respTimeinMiliSeconds=$(echo "$respTimeInSeconds*1000/1" | bc)
         echo "$(date '+%Y-%m-%d %H:%M:%S'): Response Time $respTimeinMiliSeconds (ms), Status Code $httpCode for $location" >> "$output_file"
     fi   
-    # Collect memory dump if HTTP response time reaches the threshold & HTTP code is in [200, 301, 302]  
+    # Collect memory dump if HTTP response time reaches the threshold
     if [[ "$respTimeinMiliSeconds" -ge "$threshold" ]]; then
         if [[ "$enable_dump" == true  ]]; then
             collectdump "$output_file" "$dump_lock_file" "$instance" "$pid" &
