@@ -224,9 +224,13 @@ fi
 
 if [[ -z "$memory_limit" ]] && [[ -f "/sys/fs/cgroup/memory/memory.limit_in_bytes" ]]; then
     memory_limit=$(cat /sys/fs/cgroup/memory/memory.limit_in_bytes 2>/dev/null)
-    # Very large number indicates no limit, fall back to system memory
-    if [[ -n "$memory_limit" ]] && [[ "$memory_limit" -gt 9000000000000000 ]]; then
-        memory_limit=""
+    # Handle scientific notation and very large numbers (indicates no limit)
+    # Use bc for comparison as bash can't handle scientific notation
+    if [[ -n "$memory_limit" ]]; then
+        is_large=$(echo "$memory_limit > 9000000000000000" | bc 2>/dev/null || echo "0")
+        if [[ "$is_large" == "1" ]]; then
+            memory_limit=""
+        fi
     fi
 fi
 
@@ -235,8 +239,8 @@ if [[ -z "$memory_limit" ]]; then
     memory_limit=$(grep MemTotal /proc/meminfo | awk '{print $2 * 1024}')
 fi
 
-# Convert to MB
-memory_limit_mb=$((memory_limit / 1024 / 1024))
+# Convert to MB using printf to handle scientific notation
+memory_limit_mb=$(printf "%.0f" $(echo "scale=0; $memory_limit / 1024 / 1024" | bc 2>/dev/null || echo "0"))
 
 # Validate we have a reasonable value
 if [[ -z "$memory_limit_mb" ]] || [[ "$memory_limit_mb" -le 0 ]]; then
