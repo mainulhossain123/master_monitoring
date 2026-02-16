@@ -10,10 +10,11 @@ script_name=${0##*/}
 
 function usage()
 {
-    echo "###Syntax: $script_name -t <threshold> [enable-dump|enable-trace|enable-dump-trace]"
+    echo "###Syntax: $script_name -t <threshold> -d <duration> [enable-dump|enable-trace|enable-dump-trace]"
     echo "- Without specifying -t <threshold>, the default will be 80%."
     echo "###Threshold: when the memory usage percentage exceeds the threshold value (0-100), the script will automatically take a memory dump and/or trace for that instance."
     echo "- The percentage is calculated based on Working Set vs container memory limit."
+    echo "-d <duration>: Optional - specify monitoring duration in hours. Script will auto-cleanup after this time or after collecting diagnostics."
 }
 
 function die()
@@ -70,6 +71,8 @@ function collectdump()
         azcopy_output=$(/tools/azcopy copy "$dump_file" "$sas_url" 2>&1)
         if echo "$azcopy_output" | grep -q "Final Job Status: Completed"; then
             echo "$(date '+%Y-%m-%d %H:%M:%S'): Memory dump has been successfully uploaded to Azure Blob Container." >> "$1"
+            touch "dump_completed_${3}.lock"
+            check_and_cleanup "$1" "$3"
             return 0
         fi
 
@@ -84,6 +87,8 @@ function collectdump()
             azcopy_output=$(/tools/azcopy copy "$dump_file" "$sas_url" 2>&1)
             if echo "$azcopy_output" | grep -q "Final Job Status: Completed"; then
                 echo "$(date '+%Y-%m-%d %H:%M:%S'): Memory dump has been successfully uploaded to Azure Blob Container." >> "$1"
+                touch "dump_completed_${3}.lock"
+                check_and_cleanup "$1" "$3"
                 return 0
             fi
             
@@ -111,6 +116,8 @@ function collecttrace()
         azcopy_output=$(/tools/azcopy copy "$trace_file" "$sas_url" 2>&1)
         if echo "$azcopy_output" | grep -q "Final Job Status: Completed"; then
             echo "$(date '+%Y-%m-%d %H:%M:%S'): Profiler trace has been successfully uploaded to Azure Blob Container." >> "$1"
+            touch "trace_completed_${3}.lock"
+            check_and_cleanup "$1" "$3"
             return 0
         fi
 
@@ -125,6 +132,8 @@ function collecttrace()
             azcopy_output=$(/tools/azcopy copy "$trace_file" "$sas_url" 2>&1)
             if echo "$azcopy_output" | grep -q "Final Job Status: Completed"; then
                 echo "$(date '+%Y-%m-%d %H:%M:%S'): Profiler trace has been successfully uploaded to Azure Blob Container." >> "$1"
+                touch "trace_completed_${3}.lock"
+                check_and_cleanup "$1" "$3"
                 return 0
             fi
             
@@ -136,10 +145,39 @@ function collecttrace()
     fi
 }
 
-while getopts ":t:hc" opt; do
+function check_and_cleanup()
+{
+    # $1-$output_file, $2-$instance
+    local all_complete=true
+    
+    # Check if all enabled diagnostics are complete
+    if [[ "$enable_dump" == true ]] && [[ ! -e "dump_completed_${2}.lock" ]]; then
+        all_complete=false
+    fi
+    
+    if [[ "$enable_trace" == true ]] && [[ ! -e "trace_completed_${2}.lock" ]]; then
+        all_complete=false
+    fi
+    
+    # If all enabled diagnostics are complete, initiate cleanup
+    if [[ "$all_complete" == true ]]; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): All diagnostics collected and uploaded successfully. Initiating automatic cleanup..." >> "$1"
+        # Kill the timer process if it exists
+        if [[ -n "$timer_pid" ]]; then
+            kill "$timer_pid" 2>/dev/null
+        fi
+        sleep 2
+        teardown
+    fi
+}
+
+while getopts ":t:d:hc" opt; do
     case $opt in
         t)
            threshold=$OPTARG
+           ;;
+        d)
+           duration=$OPTARG
            ;;
         h)
            usage
@@ -208,6 +246,27 @@ fi
 instance=$(getcomputername "$pid")
 if [[ -z "$instance" ]]; then
     die "Cannot find the environment variable of COMPUTERNAME" >&2 1
+fi
+
+# Output dir is named after instance name
+output_dir="memory-logs-$instance"
+# Create output directory if it doesn't exist
+mkdir -p "$output_dir"
+
+# Start duration timer if specified
+timer_pid=""
+if [[ -n "$duration" ]] && [[ "$duration" -gt 0 ]]; then
+    duration_seconds=$((duration * 3600))
+    echo "###Info: Monitoring will run for $duration hour(s) and then auto-cleanup"
+    (
+        sleep "$duration_seconds"
+        current_hour=$(date +"%Y-%m-%d_%H")
+        log_file="$output_dir/memory_usage_${current_hour}.log"
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): Monitoring duration of $duration hour(s) elapsed. Threshold was not exceeded within the time frame. Initiating automatic cleanup..." >> "$log_file"
+        teardown
+    ) &
+    timer_pid=$!
+    echo "###Info: Timer started (PID: $timer_pid) - will cleanup after $duration hour(s)"
 fi
 
 # Get container memory limit from cgroups
