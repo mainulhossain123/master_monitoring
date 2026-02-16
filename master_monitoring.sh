@@ -12,7 +12,7 @@ master_script_name=${0##*/}
 # Usage function to display help
 function usage() {
     echo "-------------------------------------------------------------------------------------------------------------------"
-    echo "Syntax: $master_script_name -d <diagnostics> -t <threshold> [-l <URL>] [-c] [-h] [enable-trace | enable-dump | enable-dump-trace]"
+    echo "Syntax: $master_script_name -d <diagnostics> -t <threshold> [-D <duration>] [-l <URL>] [-c] [-h] [enable-trace | enable-dump | enable-dump-trace]"
     echo "-------------------------------------------------------------------------------------------------------------------"
     echo "-d <diagnostics> specifies which diagnostic to run. The diagnostics can be one of following:"
     echo "  - threadcount       :  Monitor thread count of a .NET core application"
@@ -22,6 +22,7 @@ function usage() {
     echo "-------------------------------------------------------------------------------------------------------------------"
     echo "Other script options:"
     echo "  -t <threshold>:  Specify threshold (required for all diagnostics)"
+    echo "  -D <duration> :  Specify monitoring duration in hours (1-48, default: 48)"
     echo "  -l <URL>      :  Specify URL to monitor (default: http://localhost:80 for responsetime only)"
     echo "  -c            :  Shutting down the script and all relevant processes"
     echo "  -h            :  Display this help message"
@@ -33,10 +34,11 @@ function usage() {
 }
 
 # Parse arguments
-while getopts ":d:t:l:ch" opt; do
+while getopts ":d:t:D:l:ch" opt; do
     case $opt in
         d) DIAGNOSTIC=$OPTARG ;;
         t) THRESHOLD=$OPTARG ;;
+        D) DURATION=$OPTARG ;;
         l) URL=$OPTARG ;;
         c) CLEANUP=true ;;
         h) usage ;;
@@ -110,6 +112,20 @@ else
     done
 fi
 
+# Get duration if not provided
+if [ -z "$DURATION" ]; then
+    read -p "Enter monitoring duration in hours (1-48, default: 48): " DURATION
+    DURATION=${DURATION:-48}
+fi
+
+# Validate duration
+if ! [[ "$DURATION" =~ ^[0-9]+$ ]] || [ "$DURATION" -lt 1 ] || [ "$DURATION" -gt 48 ]; then
+    echo "Error: Duration must be a number between 1 and 48 hours."
+    exit 1
+fi
+
+echo "Monitoring will run for $DURATION hour(s) before automatic cleanup."
+
 # Define URLs for the diagnostic scripts
 THREADCOUNT_SCRIPT_URL="https://raw.githubusercontent.com/mainulhossain123/master_monitoring/refs/heads/testing/netcore_threadcount_monitoring.sh"
 RESPONSETIME_SCRIPT_URL="https://raw.githubusercontent.com/mainulhossain123/master_monitoring/refs/heads/testing/resp_monitoring.sh"
@@ -162,6 +178,9 @@ cmd_args=()
 case $DIAGNOSTIC in
     threadcount)
         cmd_args+=("-t" "$THRESHOLD")
+        if [ -n "$DURATION" ]; then
+            cmd_args+=("-d" "$DURATION")
+        fi
         if [ -n "$DIAG_OPTION" ]; then
             cmd_args+=("$DIAG_OPTION")
         fi
@@ -172,6 +191,9 @@ case $DIAGNOSTIC in
         if [ -n "$URL" ]; then
             cmd_args+=("-l" "$URL")
         fi
+        if [ -n "$DURATION" ]; then
+            cmd_args+=("-d" "$DURATION")
+        fi
         if [ -n "$DIAG_OPTION" ]; then
             cmd_args+=("$DIAG_OPTION")
         fi
@@ -179,6 +201,9 @@ case $DIAGNOSTIC in
         ;;
     outboundconnection)
         cmd_args+=("-t" "$THRESHOLD")
+        if [ -n "$DURATION" ]; then
+            cmd_args+=("-d" "$DURATION")
+        fi
         if [ -n "$DIAG_OPTION" ]; then
             cmd_args+=("$DIAG_OPTION")
         fi
@@ -186,6 +211,9 @@ case $DIAGNOSTIC in
         ;;
     memory)
         cmd_args+=("-t" "$THRESHOLD")
+        if [ -n "$DURATION" ]; then
+            cmd_args+=("-d" "$DURATION")
+        fi
         if [ -n "$DIAG_OPTION" ]; then
             cmd_args+=("$DIAG_OPTION")
         fi
