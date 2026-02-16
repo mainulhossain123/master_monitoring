@@ -12,9 +12,10 @@ script_name=${0##*/}
 
 function usage()
 {
-    echo "###Syntax: $script_name -t <threshold> -f <interval>"
+    echo "###Syntax: $script_name -t <threshold> -f <interval> -d <duration>"
     echo "-t <threshold> tells the threshold of outbound connections to collect dump/trace, if not given then will be defaulted to 100"
     echo "-f <interval> tells how frequent (in second) to poll the connections, if not given, then will poll every 10s"
+    echo "-d <duration>: Optional - specify monitoring duration in hours. Script will auto-cleanup after this time or after collecting diagnostics."
     echo "Additional arguments:"
     echo "  enable-dump        Enable memory dump collection when threshold is exceeded"
     echo "  enable-trace       Enable profiler trace collection when threshold is exceeded"
@@ -74,6 +75,8 @@ function collectdump()
         azcopy_output=$(/tools/azcopy copy "$dump_file" "$sas_url" 2>&1)
         if echo "$azcopy_output" | grep -q "Final Job Status: Completed"; then
             echo "$(date '+%Y-%m-%d %H:%M:%S'): Memory dump has been successfully uploaded to Azure Blob Container." >> "$1"
+            touch "dump_completed_${3}.lock"
+            check_and_cleanup "$1"
             return 0
         fi
 
@@ -88,6 +91,8 @@ function collectdump()
             azcopy_output=$(/tools/azcopy copy "$dump_file" "$sas_url" 2>&1)
             if echo "$azcopy_output" | grep -q "Final Job Status: Completed"; then
                 echo "$(date '+%Y-%m-%d %H:%M:%S'): Memory dump has been successfully uploaded to Azure Blob Container." >> "$1"
+                touch "dump_completed_${3}.lock"
+                check_and_cleanup "$1"
                 return 0
             fi
             
@@ -115,6 +120,8 @@ function collecttrace()
         azcopy_output=$(/tools/azcopy copy "$trace_file" "$sas_url" 2>&1)
         if echo "$azcopy_output" | grep -q "Final Job Status: Completed"; then
             echo "$(date '+%Y-%m-%d %H:%M:%S'): Profiler trace has been successfully uploaded to Azure Blob Container." >> "$1"
+            touch "trace_completed_${3}.lock"
+            check_and_cleanup "$1"
             return 0
         fi
 
@@ -129,6 +136,8 @@ function collecttrace()
             azcopy_output=$(/tools/azcopy copy "$trace_file" "$sas_url" 2>&1)
             if echo "$azcopy_output" | grep -q "Final Job Status: Completed"; then
                 echo "$(date '+%Y-%m-%d %H:%M:%S'): Profiler trace has been successfully uploaded to Azure Blob Container." >> "$1"
+                touch "trace_completed_${3}.lock"
+                check_and_cleanup "$1"
                 return 0
             fi
             
@@ -137,6 +146,40 @@ function collecttrace()
 
         # If we get here, all retries failed
         echo "$(date '+%Y-%m-%d %H:%M:%S'): ERROR: AzCopy failed to upload profiler trace after $max_retries attempts." >> "$1"
+    fi
+}
+
+function check_and_cleanup()
+{
+    # $1 is the log file
+    local log_file="$1"
+    local all_diagnostics_completed=true
+    
+    # Check if dump was enabled but not completed
+    if [[ "$enable_dump" == "true" ]]; then
+        if ! ls dump_completed_*.lock >/dev/null 2>&1; then
+            all_diagnostics_completed=false
+        fi
+    fi
+    
+    # Check if trace was enabled but not completed
+    if [[ "$enable_trace" == "true" ]]; then
+        if ! ls trace_completed_*.lock >/dev/null 2>&1; then
+            all_diagnostics_completed=false
+        fi
+    fi
+    
+    if [[ "$all_diagnostics_completed" == "true" ]]; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): All enabled diagnostics have been collected and uploaded successfully." >> "$log_file"
+        
+        # Kill the duration timer if it exists
+        if [[ -n "$timer_pid" ]] && kill -0 "$timer_pid" 2>/dev/null; then
+            echo "$(date '+%Y-%m-%d %H:%M:%S'): Stopping duration timer (PID: $timer_pid)" >> "$log_file"
+            kill "$timer_pid" 2>/dev/null
+        fi
+        
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): Initiating automatic cleanup..." >> "$log_file"
+        teardown
     fi
 }
 
@@ -186,13 +229,16 @@ function monitor_connections() {
 }
 
 # Parse command line arguments
-while getopts ":t:f:hc" opt; do
+while getopts ":t:f:d:hc" opt; do
     case $opt in
         t) 
            threshold=$OPTARG
            ;;
         f)
            frequency=$OPTARG
+           ;;
+        d)
+           duration=$OPTARG
            ;;
         h)
            usage
@@ -268,6 +314,23 @@ fi
 # Setup output directory and files
 output_dir="outconn-logs-${instance}"
 mkdir -p "$output_dir"
+
+# Start duration timer if specified
+if [[ -n "$duration" ]]; then
+    duration_seconds=$((duration * 3600))
+    echo "###Info: Monitoring will run for $duration hour(s) ($duration_seconds seconds) and then automatically clean up"
+    
+    # Start background timer that will call teardown after duration
+    (
+        sleep "$duration_seconds"
+        current_hour=$(date +"%Y-%m-%d_%H")
+        log_file="$output_dir/outbound_conns_stats_${current_hour}.log"
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): Duration timer expired after $duration hour(s). Initiating automatic cleanup..." >> "$log_file"
+        teardown
+    ) &
+    timer_pid=$!
+    echo "###Info: Started duration timer with PID: $timer_pid"
+fi
 
 # Now using instance-specific lock files
 dump_lock_file="dump_taken_${instance}.lock"
