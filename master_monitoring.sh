@@ -18,6 +18,7 @@ function usage() {
     echo "  - threadcount       :  Monitor thread count of a .NET core application"
     echo "  - responsetime      :  Monitor response time of a .NET core application"
     echo "  - outboundconnection:  Monitor outbound connections"
+    echo "  - memory            :  Monitor memory usage of a .NET core application"
     echo "-------------------------------------------------------------------------------------------------------------------"
     echo "Other script options:"
     echo "  -t <threshold>:  Specify threshold (required for all diagnostics)"
@@ -51,6 +52,7 @@ if [ "$CLEANUP" = true ]; then
     ./threadcount/netcore_threadcount_monitoring.sh -c 2>/dev/null
     ./responsetime/resp_monitoring.sh -c 2>/dev/null
     ./outboundconnection/snat_connection_monitoring.sh -c 2>/dev/null
+    ./memory/memory_monitoring.sh -c 2>/dev/null
     kill -SIGTERM $(ps -ef | grep "$master_script_name" | grep -v grep | tr -s " " | cut -d" " -f2 | xargs)
     exit 0
 fi
@@ -61,12 +63,14 @@ if [ -z "$DIAGNOSTIC" ]; then
     echo "1. threadcount"
     echo "2. responsetime"
     echo "3. outboundconnection"
-    read -p "Enter choice [1-3]: " diag_choice
+    echo "4. memory"
+    read -p "Enter choice [1-4]: " diag_choice
 
     case $diag_choice in
         1) DIAGNOSTIC="threadcount" ;;
         2) DIAGNOSTIC="responsetime" ;;
         3) DIAGNOSTIC="outboundconnection" ;;
+        4) DIAGNOSTIC="memory" ;;
         *) echo "Invalid choice." ; exit 1 ;;
     esac
 fi
@@ -110,6 +114,7 @@ fi
 THREADCOUNT_SCRIPT_URL="https://raw.githubusercontent.com/mainulhossain123/master_monitoring/refs/heads/testing/netcore_threadcount_monitoring.sh"
 RESPONSETIME_SCRIPT_URL="https://raw.githubusercontent.com/mainulhossain123/master_monitoring/refs/heads/testing/resp_monitoring.sh"
 SNAT_CONNECTION_MONITORING_SCRIPT_URL="https://raw.githubusercontent.com/mainulhossain123/master_monitoring/refs/heads/testing/snat_connection_monitoring.sh"
+MEMORY_MONITORING_SCRIPT_URL="https://raw.githubusercontent.com/mainulhossain123/master_monitoring/refs/heads/testing/memory_monitoring.sh"
 
 # Check if curl is installed, if not install it
 if ! command -v curl &> /dev/null; then
@@ -178,6 +183,13 @@ case $DIAGNOSTIC in
             cmd_args+=("$DIAG_OPTION")
         fi
         run_diagnostic_script "outboundconnection" $SNAT_CONNECTION_MONITORING_SCRIPT_URL
+        ;;
+    memory)
+        cmd_args+=("-t" "$THRESHOLD")
+        if [ -n "$DIAG_OPTION" ]; then
+            cmd_args+=("$DIAG_OPTION")
+        fi
+        run_diagnostic_script "memory" $MEMORY_MONITORING_SCRIPT_URL
         ;;
     *)
         echo "Invalid diagnostic type: $DIAGNOSTIC"
