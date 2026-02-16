@@ -11,8 +11,9 @@ script_name=${0##*/}
 function usage()
 {
     echo "###Syntax: $script_name -t <threshold> [enable-dump|enable-trace|enable-dump-trace]"
-    echo "- Without specifying -t <threshold>, the default will be 1024 MB."
-    echo "###Threshold: when the memory usage (GC Heap Size or Working Set) exceeds the threshold value in MB, the script will automatically take a memory dump and/or trace for that instance."
+    echo "- Without specifying -t <threshold>, the default will be 80%."
+    echo "###Threshold: when the memory usage percentage exceeds the threshold value (0-100), the script will automatically take a memory dump and/or trace for that instance."
+    echo "- The percentage is calculated based on Working Set vs container memory limit."
 }
 
 function die()
@@ -159,10 +160,15 @@ if [[ "$clean_flag" -eq 1 ]]; then
     teardown
 fi
 
-# Define default threshold value for memory usage in MB
+# Define default threshold value for memory usage percentage
 if [[ -z "$threshold" ]]; then
-    echo "###Info: If not specify the option -t <threshold>, the script will set the default threshold of memory usage to 1024 MB"
-    threshold=1024
+    echo "###Info: If not specify the option -t <threshold>, the script will set the default threshold of memory usage to 80%"
+    threshold=80
+fi
+
+# Validate threshold is between 0-100
+if [[ "$threshold" -lt 0 ]] || [[ "$threshold" -gt 100 ]]; then
+    die "Threshold must be between 0 and 100 (percentage)" 1
 fi
 
 # Initialize dump and trace flags
@@ -203,6 +209,28 @@ instance=$(getcomputername "$pid")
 if [[ -z "$instance" ]]; then
     die "Cannot find the environment variable of COMPUTERNAME" >&2 1
 fi
+
+# Get container memory limit from cgroups
+# Try cgroups v2 first, then v1
+if [[ -f "/sys/fs/cgroup/memory.max" ]]; then
+    memory_limit=$(cat /sys/fs/cgroup/memory.max)
+    # memory.max returns "max" for unlimited, fall back to system memory
+    if [[ "$memory_limit" == "max" ]]; then
+        memory_limit=$(grep MemTotal /proc/meminfo | awk '{print $2 * 1024}')
+    fi
+elif [[ -f "/sys/fs/cgroup/memory/memory.limit_in_bytes" ]]; then
+    memory_limit=$(cat /sys/fs/cgroup/memory/memory.limit_in_bytes)
+    # Very large number indicates no limit, fall back to system memory
+    if [[ "$memory_limit" -gt 9000000000000000 ]]; then
+        memory_limit=$(grep MemTotal /proc/meminfo | awk '{print $2 * 1024}')
+    fi
+else
+    # Fallback to total system memory
+    memory_limit=$(grep MemTotal /proc/meminfo | awk '{print $2 * 1024}')
+fi
+
+memory_limit_mb=$((memory_limit / 1024 / 1024))
+echo "###Info: Container memory limit detected: $memory_limit_mb MB"
 
 # Output dir is named after instance name
 output_dir="memory-logs-$instance"
@@ -254,33 +282,24 @@ if [[ -e "$runtime_counter_log_file" ]]; then
         if [[ $line == *"GC Heap Size"* ]]; then
             gc_heap_size=$(echo "$line" | awk -F ',' '{print $NF}')
             timestamp=$(echo "$line" | awk -F ',' '{print $1}')
-            echo "$timestamp: GC Heap Size: $gc_heap_size MB" >> "$output_file"
-            
-            # Compare with the threshold value and collect dump/trace if exceeded
-            # Using bc for floating point comparison
-            if (( $(echo "$gc_heap_size >= $threshold" | bc -l) )); then
-                echo "$timestamp: GC Heap Size ($gc_heap_size MB) exceeded threshold ($threshold MB)" >> "$output_file"
-                
-                if [[ "$enable_dump" == true ]]; then
-                    collectdump "$output_file" "$dump_lock_file" "$instance" "$pid" &
-                fi
-                
-                if [[ "$enable_trace" == true ]]; then
-                    collecttrace "$output_file" "$trace_lock_file" "$instance" "$pid" &
-                fi
-            fi
+            gc_heap_percentage=$(echo "scale=2; $gc_heap_size * 100 / $memory_limit_mb" | bc)
+            echo "$timestamp: GC Heap Size: $gc_heap_size MB (${gc_heap_percentage}%)" >> "$output_file"
         fi
         
-        # Monitor Working Set (MB)
+        # Monitor Working Set (MB) - this is the primary metric for percentage calculation
         if [[ $line == *"Working Set"* ]]; then
             working_set=$(echo "$line" | awk -F ',' '{print $NF}')
             timestamp=$(echo "$line" | awk -F ',' '{print $1}')
-            echo "$timestamp: Working Set: $working_set MB" >> "$output_file"
             
-            # Compare with the threshold value and collect dump/trace if exceeded
+            # Calculate memory percentage based on Working Set
+            memory_percentage=$(echo "scale=2; $working_set * 100 / $memory_limit_mb" | bc)
+            
+            echo "$timestamp: Working Set: $working_set MB (${memory_percentage}% of ${memory_limit_mb} MB limit)" >> "$output_file"
+            
+            # Compare with the threshold percentage and collect dump/trace if exceeded
             # Using bc for floating point comparison
-            if (( $(echo "$working_set >= $threshold" | bc -l) )); then
-                echo "$timestamp: Working Set ($working_set MB) exceeded threshold ($threshold MB)" >> "$output_file"
+            if (( $(echo "$memory_percentage >= $threshold" | bc -l) )); then
+                echo "$timestamp: Memory usage (${memory_percentage}%) exceeded threshold (${threshold}%)" >> "$output_file"
                 
                 if [[ "$enable_dump" == true ]]; then
                     collectdump "$output_file" "$dump_lock_file" "$instance" "$pid" &
