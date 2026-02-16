@@ -212,24 +212,37 @@ fi
 
 # Get container memory limit from cgroups
 # Try cgroups v2 first, then v1
+memory_limit=""
+
 if [[ -f "/sys/fs/cgroup/memory.max" ]]; then
-    memory_limit=$(cat /sys/fs/cgroup/memory.max)
+    memory_limit=$(cat /sys/fs/cgroup/memory.max 2>/dev/null)
     # memory.max returns "max" for unlimited, fall back to system memory
-    if [[ "$memory_limit" == "max" ]]; then
-        memory_limit=$(grep MemTotal /proc/meminfo | awk '{print $2 * 1024}')
+    if [[ "$memory_limit" == "max" ]] || [[ -z "$memory_limit" ]]; then
+        memory_limit=""
     fi
-elif [[ -f "/sys/fs/cgroup/memory/memory.limit_in_bytes" ]]; then
-    memory_limit=$(cat /sys/fs/cgroup/memory/memory.limit_in_bytes)
+fi
+
+if [[ -z "$memory_limit" ]] && [[ -f "/sys/fs/cgroup/memory/memory.limit_in_bytes" ]]; then
+    memory_limit=$(cat /sys/fs/cgroup/memory/memory.limit_in_bytes 2>/dev/null)
     # Very large number indicates no limit, fall back to system memory
-    if [[ "$memory_limit" -gt 9000000000000000 ]]; then
-        memory_limit=$(grep MemTotal /proc/meminfo | awk '{print $2 * 1024}')
+    if [[ -n "$memory_limit" ]] && [[ "$memory_limit" -gt 9000000000000000 ]]; then
+        memory_limit=""
     fi
-else
-    # Fallback to total system memory
+fi
+
+# Fallback to total system memory if no cgroup limit found
+if [[ -z "$memory_limit" ]]; then
     memory_limit=$(grep MemTotal /proc/meminfo | awk '{print $2 * 1024}')
 fi
 
+# Convert to MB
 memory_limit_mb=$((memory_limit / 1024 / 1024))
+
+# Validate we have a reasonable value
+if [[ -z "$memory_limit_mb" ]] || [[ "$memory_limit_mb" -le 0 ]]; then
+    die "Failed to detect container memory limit. Cannot proceed with percentage-based monitoring." 1
+fi
+
 echo "###Info: Container memory limit detected: $memory_limit_mb MB"
 
 # Output dir is named after instance name
@@ -282,7 +295,8 @@ if [[ -e "$runtime_counter_log_file" ]]; then
         if [[ $line == *"GC Heap Size"* ]]; then
             gc_heap_size=$(echo "$line" | awk -F ',' '{print $NF}')
             timestamp=$(echo "$line" | awk -F ',' '{print $1}')
-            gc_heap_percentage=$(echo "scale=2; $gc_heap_size * 100 / $memory_limit_mb" | bc)
+            # Calculate percentage with bc and handle errors
+            gc_heap_percentage=$(echo "scale=2; $gc_heap_size * 100 / $memory_limit_mb" | bc 2>/dev/null || echo "0")
             echo "$timestamp: GC Heap Size: $gc_heap_size MB (${gc_heap_percentage}%)" >> "$output_file"
         fi
         
@@ -291,14 +305,14 @@ if [[ -e "$runtime_counter_log_file" ]]; then
             working_set=$(echo "$line" | awk -F ',' '{print $NF}')
             timestamp=$(echo "$line" | awk -F ',' '{print $1}')
             
-            # Calculate memory percentage based on Working Set
-            memory_percentage=$(echo "scale=2; $working_set * 100 / $memory_limit_mb" | bc)
+            # Calculate memory percentage based on Working Set with bc and handle errors
+            memory_percentage=$(echo "scale=2; $working_set * 100 / $memory_limit_mb" | bc 2>/dev/null || echo "0")
             
             echo "$timestamp: Working Set: $working_set MB (${memory_percentage}% of ${memory_limit_mb} MB limit)" >> "$output_file"
             
             # Compare with the threshold percentage and collect dump/trace if exceeded
             # Using bc for floating point comparison
-            if (( $(echo "$memory_percentage >= $threshold" | bc -l) )); then
+            if (( $(echo "$memory_percentage >= $threshold" | bc -l 2>/dev/null || echo "0") )); then
                 echo "$timestamp: Memory usage (${memory_percentage}%) exceeded threshold (${threshold}%)" >> "$output_file"
                 
                 if [[ "$enable_dump" == true ]]; then
