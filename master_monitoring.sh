@@ -18,6 +18,7 @@ function usage() {
     echo "  - threadcount       :  Monitor thread count of a .NET core application"
     echo "  - responsetime      :  Monitor response time of a .NET core application"
     echo "  - outboundconnection:  Monitor outbound connections"
+    echo "  - memory            :  Monitor memory usage of a .NET core application"
     echo "-------------------------------------------------------------------------------------------------------------------"
     echo "Other script options:"
     echo "  -t <threshold>:  Specify threshold (required for all diagnostics)"
@@ -48,10 +49,35 @@ shift $((OPTIND - 1))
 # Check if cleanup is requested
 if [ "$CLEANUP" = true ]; then
     echo "Stopping all diagnostic scripts..."
+    
+    # Try graceful cleanup first
     ./threadcount/netcore_threadcount_monitoring.sh -c 2>/dev/null
     ./responsetime/resp_monitoring.sh -c 2>/dev/null
     ./outboundconnection/snat_connection_monitoring.sh -c 2>/dev/null
-    kill -SIGTERM $(ps -ef | grep "$master_script_name" | grep -v grep | tr -s " " | cut -d" " -f2 | xargs)
+    ./memory/memory_monitoring.sh -c 2>/dev/null
+    
+    # Force kill any remaining monitoring processes
+    echo "Force killing any remaining monitoring processes..."
+    pkill -9 -f "memory_monitoring.sh"
+    pkill -9 -f "netcore_threadcount_monitoring.sh"
+    pkill -9 -f "resp_monitoring.sh"
+    pkill -9 -f "snat_connection_monitoring.sh"
+    pkill -9 -f "dotnet-counters"
+    
+    # Wait for processes to die
+    sleep 2
+    
+    # Remove lock files
+    echo "Removing lock files..."
+    rm -f dump_taken_*.lock trace_taken_*.lock
+    rm -f /home/dump_taken_*.lock /home/trace_taken_*.lock
+    
+    # Remove nohup.out files from script directories and /tmp
+    echo "Removing nohup.out files..."
+    find . -name "nohup.out" -type f -delete 2>/dev/null
+    rm -f /tmp/nohup.out 2>/dev/null
+    
+    echo "Cleanup complete."
     exit 0
 fi
 
@@ -61,12 +87,14 @@ if [ -z "$DIAGNOSTIC" ]; then
     echo "1. threadcount"
     echo "2. responsetime"
     echo "3. outboundconnection"
-    read -p "Enter choice [1-3]: " diag_choice
+    echo "4. memory"
+    read -p "Enter choice [1-4]: " diag_choice
 
     case $diag_choice in
         1) DIAGNOSTIC="threadcount" ;;
         2) DIAGNOSTIC="responsetime" ;;
         3) DIAGNOSTIC="outboundconnection" ;;
+        4) DIAGNOSTIC="memory" ;;
         *) echo "Invalid choice." ; exit 1 ;;
     esac
 fi
@@ -106,10 +134,25 @@ else
     done
 fi
 
+# Get duration if not provided
+if [ -z "$DURATION" ]; then
+    read -p "Enter monitoring duration in hours (1-48, default: 48): " DURATION
+    DURATION=${DURATION:-48}
+fi
+
+# Validate duration
+if ! [[ "$DURATION" =~ ^[0-9]+$ ]] || [ "$DURATION" -lt 1 ] || [ "$DURATION" -gt 48 ]; then
+    echo "Error: Duration must be a number between 1 and 48 hours."
+    exit 1
+fi
+
+echo "###Info: Monitoring will run for $DURATION hour(s) before automatic cleanup."
+
 # Define URLs for the diagnostic scripts
-THREADCOUNT_SCRIPT_URL="https://raw.githubusercontent.com/bkstar123/netcore_counters_monitoring/refs/heads/master/netcore_threadcount_monitoring.sh"
-RESPONSETIME_SCRIPT_URL="https://raw.githubusercontent.com/bkstar123/http_response_time_monitoring/refs/heads/master/resp_monitoring.sh"
-SNAT_CONNECTION_MONITORING_SCRIPT_URL="https://raw.githubusercontent.com/bkstar123/outbound_connection_monitoring/refs/heads/master/snat_connection_monitoring.sh"
+THREADCOUNT_SCRIPT_URL="https://raw.githubusercontent.com/mainulhossain123/master_monitoring/refs/heads/main/netcore_threadcount_monitoring.sh"
+RESPONSETIME_SCRIPT_URL="https://raw.githubusercontent.com/mainulhossain123/master_monitoring/refs/heads/main/resp_monitoring.sh"
+SNAT_CONNECTION_MONITORING_SCRIPT_URL="https://raw.githubusercontent.com/mainulhossain123/master_monitoring/refs/heads/main/snat_connection_monitoring.sh"
+MEMORY_MONITORING_SCRIPT_URL="https://raw.githubusercontent.com/mainulhossain123/master_monitoring/refs/heads/main/memory_monitoring.sh"
 
 # Check if curl is installed, if not install it
 if ! command -v curl &> /dev/null; then
@@ -128,26 +171,30 @@ function run_diagnostic_script() {
     shift
     local script_urls=("$@")
 
-    # Create folder and navigate to it
+    # Create folder for scripts
     mkdir -p ./$folder_name
-    cd ./$folder_name
 
     # Download the scripts if not already downloaded
     for script_url in "${script_urls[@]}"; do
         local diagnostic_script_name=$(basename $script_url)
-        if [ ! -f $diagnostic_script_name ]; then
+        if [ ! -f ./$folder_name/$diagnostic_script_name ]; then
             echo "Downloading $diagnostic_script_name..."
-            curl -L -o $diagnostic_script_name $script_url &> /dev/null
+            curl -L -o ./$folder_name/$diagnostic_script_name $script_url &> /dev/null
             if [ $? -ne 0 ]; then
                 echo "Failed to download the dependent script at $script_url"
                 exit 1
             fi
-            chmod +x $diagnostic_script_name
+            chmod +x ./$folder_name/$diagnostic_script_name
         fi
     done
 
-    # Run the script with the constructed arguments
-    nohup ./${script_urls[0]##*/} "${cmd_args[@]}" &
+    # Run the script with stdin redirected from /dev/null to prevent nohup.out creation
+    # Scripts will run in their own folder to create logs properly
+    local script_path="./$folder_name/${script_urls[0]##*/}"
+    cd ./$folder_name
+    nohup ./${script_urls[0]##*/} "${cmd_args[@]}" < /dev/null > /dev/null 2>&1 &
+    cd - > /dev/null
+    echo "Started ${script_urls[0]##*/} in background"
 }
 
 # Initialize command arguments array
@@ -157,6 +204,9 @@ cmd_args=()
 case $DIAGNOSTIC in
     threadcount)
         cmd_args+=("-t" "$THRESHOLD")
+        if [ -n "$DURATION" ]; then
+            cmd_args+=("-d" "$DURATION")
+        fi
         if [ -n "$DIAG_OPTION" ]; then
             cmd_args+=("$DIAG_OPTION")
         fi
@@ -167,6 +217,9 @@ case $DIAGNOSTIC in
         if [ -n "$URL" ]; then
             cmd_args+=("-l" "$URL")
         fi
+        if [ -n "$DURATION" ]; then
+            cmd_args+=("-d" "$DURATION")
+        fi
         if [ -n "$DIAG_OPTION" ]; then
             cmd_args+=("$DIAG_OPTION")
         fi
@@ -174,10 +227,23 @@ case $DIAGNOSTIC in
         ;;
     outboundconnection)
         cmd_args+=("-t" "$THRESHOLD")
+        if [ -n "$DURATION" ]; then
+            cmd_args+=("-d" "$DURATION")
+        fi
         if [ -n "$DIAG_OPTION" ]; then
             cmd_args+=("$DIAG_OPTION")
         fi
         run_diagnostic_script "outboundconnection" $SNAT_CONNECTION_MONITORING_SCRIPT_URL
+        ;;
+    memory)
+        cmd_args+=("-t" "$THRESHOLD")
+        if [ -n "$DURATION" ]; then
+            cmd_args+=("-d" "$DURATION")
+        fi
+        if [ -n "$DIAG_OPTION" ]; then
+            cmd_args+=("$DIAG_OPTION")
+        fi
+        run_diagnostic_script "memory" $MEMORY_MONITORING_SCRIPT_URL
         ;;
     *)
         echo "Invalid diagnostic type: $DIAGNOSTIC"
