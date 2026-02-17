@@ -269,12 +269,6 @@ master_monitoring.sh (Unified Interface)
 5. **Use in Staging First**: Test monitoring thresholds in non-production environments
 6. **Combine Diagnostics**: Use `enable-dump-trace` to get both stack snapshots and timeline data
 
-## GitHub Repository
-- **Repository**: https://github.com/mainulhossain123/master_monitoring
-- **Branch**: main
-- **Scripts Auto-Downloaded From**: 
-  - https://raw.githubusercontent.com/mainulhossain123/master_monitoring/refs/heads/main/
-
 ## Authors
 - Mainul Hossain - https://github.com/mainulhossain123
 - Anh Tuan Hoang - https://github.com/bkstar123
