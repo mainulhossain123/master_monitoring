@@ -188,10 +188,12 @@ function run_diagnostic_script() {
         fi
     done
 
-    # Run the script from /tmp to prevent nohup.out creation in script directory
-    # This ensures nohup.out (if created) goes to /tmp and is cleaned by system
-    local script_to_run="$(pwd)/$folder_name/${script_urls[0]##*/}"
-    (cd /tmp && nohup "$script_to_run" "${cmd_args[@]}" > /dev/null 2>&1 &)
+    # Run the script with stdin redirected from /dev/null to prevent nohup.out creation
+    # Scripts will run in their own folder to create logs properly
+    local script_path="./$folder_name/${script_urls[0]##*/}"
+    cd ./$folder_name
+    nohup ./${script_urls[0]##*/} "${cmd_args[@]}" < /dev/null > /dev/null 2>&1 &
+    cd - > /dev/null
     echo "Started ${script_urls[0]##*/} in background"
 }
 
