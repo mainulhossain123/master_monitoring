@@ -35,7 +35,7 @@ function teardown()
     echo "Shutting down $script_name process..."
     kill -SIGTERM $(ps -ef | grep "$script_name" | grep -v grep | tr -s " " | cut -d" " -f2 | xargs)
     echo "Removing lock files..."
-    rm -f dump_taken_*.lock trace_taken_*.lock
+    rm -f dump_taken_*.lock trace_taken_*.lock dump_completed_*.lock trace_completed_*.lock
     echo "Finishing up..."
     echo "Completed"
     exit 0
@@ -73,7 +73,8 @@ function collectdump()
         azcopy_output=$(/tools/azcopy copy "$dump_file" "$sas_url" 2>&1)
         if echo "$azcopy_output" | grep -q "Final Job Status: Completed"; then
             echo "$(date '+%Y-%m-%d %H:%M:%S'): Memory dump has been successfully uploaded to Azure Blob Container." >> "$1"
-            check_and_cleanup "$1" "dump"
+            touch "dump_completed_${3}.lock"
+            check_and_cleanup "$1" "$3"
             return 0
         fi
 
@@ -88,7 +89,8 @@ function collectdump()
             azcopy_output=$(/tools/azcopy copy "$dump_file" "$sas_url" 2>&1)
             if echo "$azcopy_output" | grep -q "Final Job Status: Completed"; then
                 echo "$(date '+%Y-%m-%d %H:%M:%S'): Memory dump has been successfully uploaded to Azure Blob Container." >> "$1"
-                check_and_cleanup "$1" "dump"
+                touch "dump_completed_${3}.lock"
+                check_and_cleanup "$1" "$3"
                 return 0
             fi
             
@@ -116,7 +118,8 @@ function collecttrace()
         azcopy_output=$(/tools/azcopy copy "$trace_file" "$sas_url" 2>&1)
         if echo "$azcopy_output" | grep -q "Final Job Status: Completed"; then
             echo "$(date '+%Y-%m-%d %H:%M:%S'): Profiler trace has been successfully uploaded to Azure Blob Container." >> "$1"
-            check_and_cleanup "$1" "trace"
+            touch "trace_completed_${3}.lock"
+            check_and_cleanup "$1" "$3"
             return 0
         fi
 
@@ -131,7 +134,8 @@ function collecttrace()
             azcopy_output=$(/tools/azcopy copy "$trace_file" "$sas_url" 2>&1)
             if echo "$azcopy_output" | grep -q "Final Job Status: Completed"; then
                 echo "$(date '+%Y-%m-%d %H:%M:%S'): Profiler trace has been successfully uploaded to Azure Blob Container." >> "$1"
-                check_and_cleanup "$1" "trace"
+                touch "trace_completed_${3}.lock"
+                check_and_cleanup "$1" "$3"
                 return 0
             fi
             
@@ -145,36 +149,26 @@ function collecttrace()
 
 function check_and_cleanup()
 {
-    # $1 is the log file, $2 is the diagnostic type that just completed ("dump" or "trace")
-    local log_file="$1"
-    
-    # Mark this diagnostic as completed
-    if [[ "$2" == "dump" ]]; then
-        dump_completed=true
-    elif [[ "$2" == "trace" ]]; then
-        trace_completed=true
-    fi
+    # $1-$output_file, $2-$instance
+    local all_complete=true
     
     # Check if all enabled diagnostics are complete
-    local all_complete=true
-    if [[ "$enable_dump" == true ]] && [[ "$dump_completed" != true ]]; then
+    if [[ "$enable_dump" == true ]] && [[ ! -e "dump_completed_${2}.lock" ]]; then
         all_complete=false
     fi
-    if [[ "$enable_trace" == true ]] && [[ "$trace_completed" != true ]]; then
+    
+    if [[ "$enable_trace" == true ]] && [[ ! -e "trace_completed_${2}.lock" ]]; then
         all_complete=false
     fi
     
     # If all enabled diagnostics are complete, initiate cleanup
     if [[ "$all_complete" == true ]]; then
-        echo "$(date '+%Y-%m-%d %H:%M:%S'): All enabled diagnostics have been collected and uploaded successfully." >> "$log_file"
-        
-        # Kill the duration timer if it exists
-        if [[ -n "$timer_pid" ]] && kill -0 "$timer_pid" 2>/dev/null; then
-            echo "$(date '+%Y-%m-%d %H:%M:%S'): Stopping duration timer (PID: $timer_pid)" >> "$log_file"
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): All diagnostics collected and uploaded successfully. Initiating automatic cleanup..." >> "$1"
+        # Kill the timer process if it exists
+        if [[ -n "$timer_pid" ]]; then
             kill "$timer_pid" 2>/dev/null
         fi
-        
-        echo "$(date '+%Y-%m-%d %H:%M:%S'): Initiating automatic cleanup..." >> "$log_file"
+        sleep 2
         teardown
     fi
 }
@@ -237,10 +231,6 @@ if [[ "$#" -gt 0 ]]; then
             ;;
     esac
 fi
-
-# Initialize completion tracking variables
-dump_completed=false
-trace_completed=false
 
 # Validate if bc is installed (needed for floating point comparisons)
 if ! command -v bc &> /dev/null; then

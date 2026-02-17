@@ -12,7 +12,7 @@ master_script_name=${0##*/}
 # Usage function to display help
 function usage() {
     echo "-------------------------------------------------------------------------------------------------------------------"
-    echo "Syntax: $master_script_name -d <diagnostics> -t <threshold> [-D <duration>] [-l <URL>] [-c] [-h] [enable-trace | enable-dump | enable-dump-trace]"
+    echo "Syntax: $master_script_name -d <diagnostics> -t <threshold> [-l <URL>] [-c] [-h] [enable-trace | enable-dump | enable-dump-trace]"
     echo "-------------------------------------------------------------------------------------------------------------------"
     echo "-d <diagnostics> specifies which diagnostic to run. The diagnostics can be one of following:"
     echo "  - threadcount       :  Monitor thread count of a .NET core application"
@@ -22,7 +22,6 @@ function usage() {
     echo "-------------------------------------------------------------------------------------------------------------------"
     echo "Other script options:"
     echo "  -t <threshold>:  Specify threshold (required for all diagnostics)"
-    echo "  -D <duration> :  Specify monitoring duration in hours (1-48, default: 48)"
     echo "  -l <URL>      :  Specify URL to monitor (default: http://localhost:80 for responsetime only)"
     echo "  -c            :  Shutting down the script and all relevant processes"
     echo "  -h            :  Display this help message"
@@ -34,11 +33,10 @@ function usage() {
 }
 
 # Parse arguments
-while getopts ":d:t:D:l:ch" opt; do
+while getopts ":d:t:l:ch" opt; do
     case $opt in
         d) DIAGNOSTIC=$OPTARG ;;
         t) THRESHOLD=$OPTARG ;;
-        D) DURATION=$OPTARG ;;
         l) URL=$OPTARG ;;
         c) CLEANUP=true ;;
         h) usage ;;
@@ -124,7 +122,7 @@ if ! [[ "$DURATION" =~ ^[0-9]+$ ]] || [ "$DURATION" -lt 1 ] || [ "$DURATION" -gt
     exit 1
 fi
 
-echo "Monitoring will run for $DURATION hour(s) before automatic cleanup."
+echo "###Info: Monitoring will run for $DURATION hour(s) before automatic cleanup."
 
 # Define URLs for the diagnostic scripts
 THREADCOUNT_SCRIPT_URL="https://raw.githubusercontent.com/mainulhossain123/master_monitoring/refs/heads/testing/netcore_threadcount_monitoring.sh"
