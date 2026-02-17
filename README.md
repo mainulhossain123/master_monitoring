@@ -276,8 +276,8 @@ master_monitoring.sh (Unified Interface)
   - https://raw.githubusercontent.com/mainulhossain123/master_monitoring/refs/heads/main/
 
 ## Authors
-- Mainul Hossain
-- Anh Tuan Hoang
+- Mainul Hossain - https://github.com/mainulhossain123
+- Anh Tuan Hoang - https://github.com/bkstar123
 
 ## Version History
 - **v1.0** (July 2024): Initial release with thread count, response time, and outbound connection monitoring
