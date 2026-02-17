@@ -49,11 +49,35 @@ shift $((OPTIND - 1))
 # Check if cleanup is requested
 if [ "$CLEANUP" = true ]; then
     echo "Stopping all diagnostic scripts..."
+    
+    # Try graceful cleanup first
     ./threadcount/netcore_threadcount_monitoring.sh -c 2>/dev/null
     ./responsetime/resp_monitoring.sh -c 2>/dev/null
     ./outboundconnection/snat_connection_monitoring.sh -c 2>/dev/null
     ./memory/memory_monitoring.sh -c 2>/dev/null
-    kill -SIGTERM $(ps -ef | grep "$master_script_name" | grep -v grep | tr -s " " | cut -d" " -f2 | xargs)
+    
+    # Force kill any remaining monitoring processes
+    echo "Force killing any remaining monitoring processes..."
+    pkill -9 -f "memory_monitoring.sh"
+    pkill -9 -f "netcore_threadcount_monitoring.sh"
+    pkill -9 -f "resp_monitoring.sh"
+    pkill -9 -f "snat_connection_monitoring.sh"
+    pkill -9 -f "dotnet-counters"
+    
+    # Wait for processes to die
+    sleep 2
+    
+    # Remove lock files
+    echo "Removing lock files..."
+    rm -f dump_taken_*.lock trace_taken_*.lock
+    rm -f /home/dump_taken_*.lock /home/trace_taken_*.lock
+    
+    # Remove nohup.out files from script directories and /tmp
+    echo "Removing nohup.out files..."
+    find . -name "nohup.out" -type f -delete 2>/dev/null
+    rm -f /tmp/nohup.out 2>/dev/null
+    
+    echo "Cleanup complete."
     exit 0
 fi
 
@@ -147,26 +171,28 @@ function run_diagnostic_script() {
     shift
     local script_urls=("$@")
 
-    # Create folder and navigate to it
+    # Create folder for scripts
     mkdir -p ./$folder_name
-    cd ./$folder_name
 
     # Download the scripts if not already downloaded
     for script_url in "${script_urls[@]}"; do
         local diagnostic_script_name=$(basename $script_url)
-        if [ ! -f $diagnostic_script_name ]; then
+        if [ ! -f ./$folder_name/$diagnostic_script_name ]; then
             echo "Downloading $diagnostic_script_name..."
-            curl -L -o $diagnostic_script_name $script_url &> /dev/null
+            curl -L -o ./$folder_name/$diagnostic_script_name $script_url &> /dev/null
             if [ $? -ne 0 ]; then
                 echo "Failed to download the dependent script at $script_url"
                 exit 1
             fi
-            chmod +x $diagnostic_script_name
+            chmod +x ./$folder_name/$diagnostic_script_name
         fi
     done
 
-    # Run the script with the constructed arguments
-    nohup ./${script_urls[0]##*/} "${cmd_args[@]}" &
+    # Run the script from /tmp to prevent nohup.out creation in script directory
+    # This ensures nohup.out (if created) goes to /tmp and is cleaned by system
+    local script_to_run="$(pwd)/$folder_name/${script_urls[0]##*/}"
+    (cd /tmp && nohup "$script_to_run" "${cmd_args[@]}" > /dev/null 2>&1 &)
+    echo "Started ${script_urls[0]##*/} in background"
 }
 
 # Initialize command arguments array

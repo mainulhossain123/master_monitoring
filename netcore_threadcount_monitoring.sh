@@ -36,6 +36,9 @@ function teardown()
     kill -SIGTERM $(ps -ef | grep "$script_name" | grep -v grep | tr -s " " | cut -d" " -f2 | xargs)
     echo "Removing lock files..."
     rm -f dump_taken_*.lock trace_taken_*.lock dump_completed_*.lock trace_completed_*.lock
+    echo "Removing nohup.out files..."
+    rm -f nohup.out /tmp/nohup.out 2>/dev/null
+    find . -name "nohup.out" -type f -delete 2>/dev/null
     echo "Finishing up..."
     echo "Completed"
     exit 0
