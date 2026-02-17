@@ -271,9 +271,9 @@ master_monitoring.sh (Unified Interface)
 
 ## GitHub Repository
 - **Repository**: https://github.com/mainulhossain123/master_monitoring
-- **Branch**: testing
+- **Branch**: main
 - **Scripts Auto-Downloaded From**: 
-  - https://raw.githubusercontent.com/mainulhossain123/master_monitoring/refs/heads/testing/
+  - https://raw.githubusercontent.com/mainulhossain123/master_monitoring/refs/heads/main/
 
 ## Authors
 - Mainul Hossain
@@ -281,7 +281,7 @@ master_monitoring.sh (Unified Interface)
 
 ## Version History
 - **v1.0** (July 2024): Initial release with thread count, response time, and outbound connection monitoring
-- **v2.0** (January 2025): Added memory monitoring with percentage-based thresholds
+- **v2.0** (February 2025): Added memory monitoring with percentage-based thresholds
 - **v3.0** (February 2026): Added duration-based monitoring, auto-cleanup after diagnostics, improved lock file management
 
 ## License
