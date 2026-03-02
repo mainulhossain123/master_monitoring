@@ -72,7 +72,7 @@ function collectdump()
         if echo "$azcopy_output" | grep -q "Final Job Status: Completed"; then
             echo "$(date '+%Y-%m-%d %H:%M:%S'): Memory dump has been successfully uploaded to Azure Blob Container." >> "$1"
             touch "dump_completed_${3}.lock"
-            check_and_cleanup "$1"
+            check_and_cleanup "$1" "$3"
             return 0
         fi
 
@@ -88,7 +88,7 @@ function collectdump()
             if echo "$azcopy_output" | grep -q "Final Job Status: Completed"; then
                 echo "$(date '+%Y-%m-%d %H:%M:%S'): Memory dump has been successfully uploaded to Azure Blob Container." >> "$1"
                 touch "dump_completed_${3}.lock"
-                check_and_cleanup "$1"
+                check_and_cleanup "$1" "$3"
                 return 0
             fi
             
@@ -117,7 +117,7 @@ function collecttrace()
         if echo "$azcopy_output" | grep -q "Final Job Status: Completed"; then
             echo "$(date '+%Y-%m-%d %H:%M:%S'): Profiler trace has been successfully uploaded to Azure Blob Container." >> "$1"
             touch "trace_completed_${3}.lock"
-            check_and_cleanup "$1"
+            check_and_cleanup "$1" "$3"
             return 0
         fi
 
@@ -133,7 +133,7 @@ function collecttrace()
             if echo "$azcopy_output" | grep -q "Final Job Status: Completed"; then
                 echo "$(date '+%Y-%m-%d %H:%M:%S'): Profiler trace has been successfully uploaded to Azure Blob Container." >> "$1"
                 touch "trace_completed_${3}.lock"
-                check_and_cleanup "$1"
+                check_and_cleanup "$1" "$3"
                 return 0
             fi
             
@@ -147,33 +147,32 @@ function collecttrace()
 
 function check_and_cleanup()
 {
-    # $1 is the log file
+    # $1-$log_file, $2-$instance
     local log_file="$1"
     local all_diagnostics_completed=true
-    
-    # Check if dump was enabled but not completed
+
+    # Check using instance-specific lock files to avoid false positives on multi-instance nodes
     if [[ "$enable_dump" == "true" ]]; then
-        if ! ls dump_completed_*.lock >/dev/null 2>&1; then
+        if [[ ! -e "dump_completed_${2}.lock" ]]; then
             all_diagnostics_completed=false
         fi
     fi
-    
-    # Check if trace was enabled but not completed
+
     if [[ "$enable_trace" == "true" ]]; then
-        if ! ls trace_completed_*.lock >/dev/null 2>&1; then
+        if [[ ! -e "trace_completed_${2}.lock" ]]; then
             all_diagnostics_completed=false
         fi
     fi
-    
+
     if [[ "$all_diagnostics_completed" == "true" ]]; then
         echo "$(date '+%Y-%m-%d %H:%M:%S'): All enabled diagnostics have been collected and uploaded successfully." >> "$log_file"
-        
+
         # Kill the duration timer if it exists
         if [[ -n "$timer_pid" ]] && kill -0 "$timer_pid" 2>/dev/null; then
             echo "$(date '+%Y-%m-%d %H:%M:%S'): Stopping duration timer (PID: $timer_pid)" >> "$log_file"
             kill "$timer_pid" 2>/dev/null
         fi
-        
+
         echo "$(date '+%Y-%m-%d %H:%M:%S'): Initiating automatic cleanup..." >> "$log_file"
         teardown
     fi

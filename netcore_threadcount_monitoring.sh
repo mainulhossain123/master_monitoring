@@ -154,20 +154,19 @@ function check_and_cleanup()
 {
     # $1-$output_file, $2-$instance
     local all_complete=true
-    
-    # Check if all enabled diagnostics are complete
+
+    # Check using instance-specific lock files to avoid false positives on multi-instance nodes
     if [[ "$enable_dump" == true ]] && [[ ! -e "dump_completed_${2}.lock" ]]; then
         all_complete=false
     fi
-    
+
     if [[ "$enable_trace" == true ]] && [[ ! -e "trace_completed_${2}.lock" ]]; then
         all_complete=false
     fi
-    
-    # If all enabled diagnostics are complete, initiate cleanup
+
+    # Initiate teardown only when every enabled diagnostic has been successfully uploaded
     if [[ "$all_complete" == true ]]; then
         echo "$(date '+%Y-%m-%d %H:%M:%S'): All diagnostics collected and uploaded successfully. Initiating automatic cleanup..." >> "$1"
-        # Kill the timer process if it exists
         if [[ -n "$timer_pid" ]]; then
             kill "$timer_pid" 2>/dev/null
         fi
@@ -286,6 +285,7 @@ function trunc() {
             #truncate the file
             truncate -s 0 "$1"
         fi
+        sleep 5  # Prevent tight busy loop from consuming 100% CPU
     done
 }
 
