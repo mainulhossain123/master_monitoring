@@ -340,6 +340,7 @@ function trunc() {
             #truncate the file
             truncate -s 0 "$1"
         fi
+        sleep 5  # Prevent tight busy loop from consuming 100% CPU
     done
 }
 
@@ -350,36 +351,35 @@ if [[ -e "$runtime_counter_log_file" ]]; then
     
     # Reading metric data in $runtime_counter_log_file to extract memory information
     tail -f "$runtime_counter_log_file" | while read -r line; do
-        # Check if it's a new hour for rotating logs
-        current_hour=$(date +"%Y-%m-%d_%H")
-        if [ "$current_hour" != "$previous_hour" ]; then
-            # Rotate the file
-            output_file="$output_dir/memory_usage_${current_hour}.log"
-            previous_hour="$current_hour"
+        # Only call date when the line carries actual metric data to avoid
+        # forking date on every non-metric line emitted by dotnet-counters
+        if [[ $line == *"GC Heap Size"* ]] || [[ $line == *"Working Set"* ]]; then
+            current_hour=$(date +"%Y-%m-%d_%H")
+            if [ "$current_hour" != "$previous_hour" ]; then
+                # Rotate the log file on the hour boundary
+                output_file="$output_dir/memory_usage_${current_hour}.log"
+                previous_hour="$current_hour"
+            fi
         fi
-        
+
         # Monitor GC Heap Size (MB)
         if [[ $line == *"GC Heap Size"* ]]; then
-            gc_heap_size=$(echo "$line" | awk -F ',' '{print $NF}')
-            timestamp=$(echo "$line" | awk -F ',' '{print $1}')
-            # Calculate percentage with bc and handle errors
-            gc_heap_percentage=$(echo "scale=2; $gc_heap_size * 100 / $memory_limit_mb" | bc 2>/dev/null || echo "0")
+            # Use a single awk invocation for both parsing and percentage calculation
+            # (avoids forking bc as a subprocess)
+            read -r timestamp gc_heap_size gc_heap_percentage <<< "$(echo "$line" | awk -F ',' -v limit="$memory_limit_mb" '{ts=$1; val=$NF; pct=(limit>0 ? val*100/limit : 0); printf "%s %.4f %.2f\n", ts, val, pct}')"
             echo "$timestamp: GC Heap Size: $gc_heap_size MB (${gc_heap_percentage}%)" >> "$output_file"
         fi
         
         # Monitor Working Set (MB) - this is the primary metric for percentage calculation
         if [[ $line == *"Working Set"* ]]; then
-            working_set=$(echo "$line" | awk -F ',' '{print $NF}')
-            timestamp=$(echo "$line" | awk -F ',' '{print $1}')
-            
-            # Calculate memory percentage based on Working Set with bc and handle errors
-            memory_percentage=$(echo "scale=2; $working_set * 100 / $memory_limit_mb" | bc 2>/dev/null || echo "0")
+            # Use a single awk invocation for parsing, percentage calculation, and threshold
+            # comparison — replaces three separate bc subprocess forks per line
+            read -r timestamp working_set memory_percentage threshold_exceeded <<< "$(echo "$line" | awk -F ',' -v limit="$memory_limit_mb" -v thr="$threshold" '{ts=$1; val=$NF; pct=(limit>0 ? val*100/limit : 0); exceeded=(pct>=thr ? 1 : 0); printf "%s %.4f %.2f %d\n", ts, val, pct, exceeded}')"
             
             echo "$timestamp: Working Set: $working_set MB (${memory_percentage}% of ${memory_limit_mb} MB limit)" >> "$output_file"
             
             # Compare with the threshold percentage and collect dump/trace if exceeded
-            # Using bc for floating point comparison
-            if (( $(echo "$memory_percentage >= $threshold" | bc -l 2>/dev/null || echo "0") )); then
+            if [[ "$threshold_exceeded" == "1" ]]; then
                 echo "$timestamp: Memory usage (${memory_percentage}%) exceeded threshold (${threshold}%)" >> "$output_file"
                 
                 if [[ "$enable_dump" == true ]]; then
