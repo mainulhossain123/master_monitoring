@@ -364,17 +364,20 @@ if [[ -e "$runtime_counter_log_file" ]]; then
 
         # Monitor GC Heap Size (MB)
         if [[ $line == *"GC Heap Size"* ]]; then
-            # Use a single awk invocation for both parsing and percentage calculation
-            # (avoids forking bc as a subprocess)
-            read -r timestamp gc_heap_size gc_heap_percentage <<< "$(echo "$line" | awk -F ',' -v limit="$memory_limit_mb" '{ts=$1; val=$NF; pct=(limit>0 ? val*100/limit : 0); printf "%s %.4f %.2f\n", ts, val, pct}')"
+            # Use a single awk invocation for both parsing and percentage calculation.
+            # Pipe '|' is used as the field separator in printf output so that the space
+            # inside the dotnet-counters timestamp (e.g. "03/02/2026 06:27:17") does not
+            # cause 'read' to shift all variables one position to the right.
+            IFS='|' read -r timestamp gc_heap_size gc_heap_percentage <<< "$(echo "$line" | awk -F ',' -v limit="$memory_limit_mb" '{ts=$1; val=$NF; pct=(limit>0 ? val*100/limit : 0); printf "%s|%.4f|%.2f\n", ts, val, pct}')"
             echo "$timestamp: GC Heap Size: $gc_heap_size MB (${gc_heap_percentage}%)" >> "$output_file"
         fi
         
         # Monitor Working Set (MB) - this is the primary metric for percentage calculation
         if [[ $line == *"Working Set"* ]]; then
             # Use a single awk invocation for parsing, percentage calculation, and threshold
-            # comparison — replaces three separate bc subprocess forks per line
-            read -r timestamp working_set memory_percentage threshold_exceeded <<< "$(echo "$line" | awk -F ',' -v limit="$memory_limit_mb" -v thr="$threshold" '{ts=$1; val=$NF; pct=(limit>0 ? val*100/limit : 0); exceeded=(pct>=thr ? 1 : 0); printf "%s %.4f %.2f %d\n", ts, val, pct, exceeded}')"
+            # comparison. Pipe '|' delimiter prevents the timestamp's internal space from
+            # splitting into extra 'read' tokens and corrupting all downstream variables.
+            IFS='|' read -r timestamp working_set memory_percentage threshold_exceeded <<< "$(echo "$line" | awk -F ',' -v limit="$memory_limit_mb" -v thr="$threshold" '{ts=$1; val=$NF; pct=(limit>0 ? val*100/limit : 0); exceeded=(pct>=thr ? 1 : 0); printf "%s|%.4f|%.2f|%d\n", ts, val, pct, exceeded}')"
             
             echo "$timestamp: Working Set: $working_set MB (${memory_percentage}% of ${memory_limit_mb} MB limit)" >> "$output_file"
             
