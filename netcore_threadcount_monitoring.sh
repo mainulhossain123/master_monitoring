@@ -39,6 +39,9 @@ function teardown()
     find . -name "nohup.out" -type f -delete 2>/dev/null
     echo "Shutting down $script_name process..."
     kill -SIGTERM $(ps -ef | grep "$script_name" | grep -v grep | tr -s " " | cut -d" " -f2 | xargs) 2>/dev/null
+    sleep 1
+    pkill -9 -f "$script_name" 2>/dev/null
+    pkill -9 -f "tail -f dotnet-runtime-metrics" 2>/dev/null
     echo "Finishing up..."
     echo "Completed"
     exit 0
