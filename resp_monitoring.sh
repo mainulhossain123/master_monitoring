@@ -281,7 +281,9 @@ if [[ -n "$duration" ]]; then
     
     # Start background timer that will call teardown after duration
     (
-        sleep "$duration_seconds"
+        trap 'kill $(jobs -p) 2>/dev/null; exit' SIGTERM SIGINT
+        sleep "$duration_seconds" &
+        wait
         current_hour=$(date +"%Y-%m-%d_%H")
         log_file="$output_dir/resptime_stats_${current_hour}.log"
         echo "$(date '+%Y-%m-%d %H:%M:%S'): Duration timer expired after $duration hour(s). Initiating automatic cleanup..." >> "$log_file"

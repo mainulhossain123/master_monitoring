@@ -264,7 +264,9 @@ if [[ -n "$duration" ]] && [[ "$duration" -gt 0 ]]; then
     duration_seconds=$((duration * 3600))
     echo "###Info: Monitoring will run for $duration hour(s) and then auto-cleanup"
     (
-        sleep "$duration_seconds"
+        trap 'kill $(jobs -p) 2>/dev/null; exit' SIGTERM SIGINT
+        sleep "$duration_seconds" &
+        wait
         current_hour=$(date +"%Y-%m-%d_%H")
         log_file="$output_dir/memory_usage_${current_hour}.log"
         echo "$(date '+%Y-%m-%d %H:%M:%S'): Monitoring duration of $duration hour(s) elapsed. Threshold was not exceeded within the time frame. Initiating automatic cleanup..." >> "$log_file"
